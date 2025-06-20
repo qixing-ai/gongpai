@@ -108,7 +108,7 @@ def create_cube_geometry(width, height, thickness):
         # 前面和后面 - 高细分，使用完整纹理（边框已在纹理中预留）
         ([[-half_w, -half_h, half_t], [half_w, -half_h, half_t], 
           [half_w, half_h, half_t], [-half_w, half_h, half_t]], 
-         [[0, 0], [1, 0], [1, 1], [0, 1]], 
+         [[1, 0], [0, 0], [0, 1], [1, 1]], 
          [0, 0, 1], FRONT_BACK_SUBDIVISIONS),
         
         ([[half_w, -half_h, -half_t], [-half_w, -half_h, -half_t], 
