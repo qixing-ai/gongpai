@@ -23,6 +23,10 @@ FRONT_BACK_SUBDIVISIONS, SIDE_SUBDIVISIONS = 512, 2
 TEXTURE_FILE = "1.png"
 OUTPUT_DIR = "output"
 
+# UV映射尺寸参数
+UV_MAPPING_MAX_WIDTH_CM = 5.0   # UV映射最大宽度（厘米）
+UV_MAPPING_MAX_HEIGHT_CM = 7.0  # UV映射最大高度（厘米）
+
 # 一字孔常量定义
 HOLE_WIDTH_MM = 12.0
 HOLE_HEIGHT_MM = 2.0
@@ -32,16 +36,40 @@ HOLE_TOP_DISTANCE_CM = 8.7
 CORNER_RADIUS_CM = 0.8  # 圆角半径，类似iPhone 6的圆角大小
 CORNER_SUBDIVISIONS = 16  # 圆角细分数，数值越大越平滑
 
+def calculate_uv_mapping_size(img_width, img_height):
+    """根据图片宽高比计算不变形的UV映射尺寸"""
+    max_width = UV_MAPPING_MAX_WIDTH_CM / 100   # 转换为米
+    max_height = UV_MAPPING_MAX_HEIGHT_CM / 100  # 转换为米
+    
+    # 计算图片宽高比
+    img_ratio = img_width / img_height
+    max_ratio = UV_MAPPING_MAX_WIDTH_CM / UV_MAPPING_MAX_HEIGHT_CM
+    
+    if img_ratio > max_ratio:
+        # 图片更宽，以最大宽度为准
+        uv_width = max_width
+        uv_height = max_width / img_ratio
+    else:
+        # 图片更高，以最大高度为准
+        uv_height = max_height
+        uv_width = max_height * img_ratio
+    
+    return uv_width, uv_height
+
 def load_and_process_texture(img_path):
     """加载并处理纹理图像"""
     if not os.path.exists(img_path):
         print(f"❌ 图片文件不存在: {img_path}")
-        return None, None
+        return None, None, None
     
     try:
         img = PILImage.open(img_path).convert('RGB')
         w, h = img.size
         print(f"📸 图片: {os.path.basename(img_path)} ({w}x{h})")
+        
+        # 计算动态UV映射尺寸（保持图片不变形）
+        uv_width, uv_height = calculate_uv_mapping_size(w, h)
+        print(f"🎨 UV映射区域: {uv_width*100:.1f}x{uv_height*100:.1f} cm (保持图片比例)")
         
         # 固定工牌尺寸
         dimensions = (FIXED_WIDTH_CM / 100, FIXED_HEIGHT_CM / 100, DEFAULT_THICKNESS_CM / 100)
@@ -63,11 +91,11 @@ def load_and_process_texture(img_path):
         texture_img = padded_img.resize((TEXTURE_SIZE, TEXTURE_SIZE), PILImage.LANCZOS)
         
         print(f"📏 固定尺寸: {FIXED_WIDTH_CM:.1f}x{FIXED_HEIGHT_CM:.1f}x{DEFAULT_THICKNESS_CM:.1f} cm")
-        return dimensions, texture_img
+        return dimensions, texture_img, (uv_width, uv_height)
         
     except Exception as e:
         print(f"❌ 处理失败: {e}")
-        return None, None
+        return None, None, None
 
 def bilinear_interpolate(corners, uvs, u, v):
     """双线性插值计算位置和UV"""
@@ -137,7 +165,7 @@ def create_hole_wall(corners, uvs, normal):
     """创建孔洞内壁面"""
     return create_face_mesh([np.array(v) for v in corners], uvs, normal, 2)
 
-def generate_rounded_rectangle_mesh(width, height, radius, subdivisions):
+def generate_rounded_rectangle_mesh(width, height, radius, subdivisions, uv_mapping_size=None):
     """生成圆角矩形的网格数据（使用规则网格而不是辐射状）"""
     half_w, half_h = width / 2, height / 2
     
@@ -150,6 +178,17 @@ def generate_rounded_rectangle_mesh(width, height, radius, subdivisions):
     vertices = []
     uvs = []
     indices = []
+    
+    # UV映射参数 - 使用动态尺寸或默认值
+    if uv_mapping_size:
+        uv_width, uv_height = uv_mapping_size
+    else:
+        uv_width = UV_MAPPING_MAX_WIDTH_CM / 100   # 转换为米
+        uv_height = UV_MAPPING_MAX_HEIGHT_CM / 100  # 转换为米
+    
+    # 计算UV映射的居中偏移
+    uv_offset_x = (width - uv_width) / 2
+    uv_offset_y = (height - uv_height) / 2
     
     # 生成网格顶点
     for i in range(grid_size + 1):
@@ -182,11 +221,20 @@ def generate_rounded_rectangle_mesh(width, height, radius, subdivisions):
             
             vertices.append([x, y])
             
-            # 计算UV坐标
-            u_raw = (x + half_w) / width
-            v_raw = (y + half_h) / height
-            u = u_raw
-            v = v_raw
+            # 计算UV坐标 - 使用新的映射尺寸和居中逻辑
+            # 将世界坐标转换为相对于UV映射区域的坐标
+            x_in_uv_space = x + half_w - uv_offset_x  # 相对于UV映射区域左边界
+            y_in_uv_space = y + half_h - uv_offset_y  # 相对于UV映射区域底边界
+            
+            # 计算UV坐标（0-1范围）
+            if uv_width > 0 and uv_height > 0:
+                u = x_in_uv_space / uv_width
+                v = y_in_uv_space / uv_height
+            else:
+                u = (x + half_w) / width
+                v = (y + half_h) / height
+            
+            # 限制UV坐标在0-1范围内，超出范围的部分将显示纹理边缘
             u = max(0, min(1, u))
             v = max(0, min(1, v))
             uvs.append([u, v])
@@ -206,7 +254,7 @@ def generate_rounded_rectangle_mesh(width, height, radius, subdivisions):
     
     return vertices, uvs, indices
 
-def create_cube_geometry(width, height, thickness):
+def create_cube_geometry(width, height, thickness, uv_mapping_size=None):
     """创建带圆角倒角的立方体几何体（类似iPhone 6设计）"""
     half_w, half_h, half_t = width/2, height/2, thickness/2
     
@@ -234,7 +282,7 @@ def create_cube_geometry(width, height, thickness):
         
         # 生成圆角矩形网格 - 使用前后面的高分辨率
         rect_vertices, rect_uvs, rect_indices = generate_rounded_rectangle_mesh(
-            width, height, corner_radius, FRONT_BACK_SUBDIVISIONS)
+            width, height, corner_radius, FRONT_BACK_SUBDIVISIONS, uv_mapping_size)
         
         # 过滤掉孔洞内的顶点
         vertex_map = {}
@@ -520,9 +568,10 @@ def convert_glb_to_obj(glb_path, obj_path):
 
 def main():
     """主函数"""
-    print("🔲 固定尺寸立方体GLB工牌生成器 - 简化版")
+    print("🔲 固定尺寸立方体GLB工牌生成器 - 动态UV映射版")
     print("=" * 50)
-    print("📐 固定尺寸: 6.0x9.0x0.2 cm - 图片自适应缩放")
+    print("📐 固定尺寸: 6.0x9.0x0.2 cm - 图片保持比例不变形")
+    print(f"🎨 UV映射最大区域: {UV_MAPPING_MAX_WIDTH_CM:.1f}x{UV_MAPPING_MAX_HEIGHT_CM:.1f} cm")
     
     # 创建输出目录
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -533,11 +582,12 @@ def main():
         print("❌ 未找到图像文件")
         return
     
-    dimensions, texture_img = load_and_process_texture(texture_path) or (
-        (FIXED_WIDTH_CM / 100, FIXED_HEIGHT_CM / 100, DEFAULT_THICKNESS_CM / 100), None)
+    result = load_and_process_texture(texture_path)
+    if result[0] is None:
+        print("❌ 图像处理失败")
+        return
     
-    if texture_img is None:
-        print("⚠️ 使用默认尺寸")
+    dimensions, texture_img, uv_mapping_size = result
     
     # 生成文件路径
     base_name = os.path.splitext(os.path.basename(texture_path))[0]
@@ -546,7 +596,7 @@ def main():
     
     # 创建几何体
     print("🔧 创建几何数据...")
-    vertices, uvs, normals, indices = create_cube_geometry(*dimensions)
+    vertices, uvs, normals, indices = create_cube_geometry(*dimensions, uv_mapping_size)
     
     # 导出GLB
     print("📦 生成GLB文件...")
