@@ -29,6 +29,10 @@ HOLE_WIDTH_MM = 12.0
 HOLE_HEIGHT_MM = 2.0
 HOLE_TOP_DISTANCE_CM = 8.7
 
+# 圆角倒角常量定义（类似iPhone 6的圆角设计）
+CORNER_RADIUS_CM = 0.8  # 圆角半径，类似iPhone 6的圆角大小
+CORNER_SUBDIVISIONS = 16  # 圆角细分数，数值越大越平滑
+
 def load_and_process_texture(img_path):
     """加载并处理纹理图像"""
     if not os.path.exists(img_path):
@@ -140,9 +144,85 @@ def create_hole_wall(corners, uvs, normal):
     """创建孔洞内壁面"""
     return create_face_mesh([np.array(v) for v in corners], uvs, normal, 2)
 
+def generate_rounded_rectangle_mesh(width, height, radius, subdivisions):
+    """生成圆角矩形的网格数据（使用规则网格而不是辐射状）"""
+    half_w, half_h = width / 2, height / 2
+    
+    # 确保圆角半径不超过矩形的一半
+    max_radius = min(half_w, half_h)
+    radius = min(radius, max_radius)
+    
+    # 计算边框在UV空间中的比例
+    border_u = BORDER_CM / FIXED_WIDTH_CM
+    border_v = BORDER_CM / FIXED_HEIGHT_CM
+    
+    # 创建规则网格
+    grid_size = subdivisions
+    vertices = []
+    uvs = []
+    indices = []
+    
+    # 生成网格顶点
+    for i in range(grid_size + 1):
+        for j in range(grid_size + 1):
+            # 在[-1, 1]范围内的参数坐标
+            u_param = (i / grid_size) * 2 - 1  # -1 到 1
+            v_param = (j / grid_size) * 2 - 1  # -1 到 1
+            
+            # 转换为世界坐标
+            x = u_param * half_w
+            y = v_param * half_h
+            
+            # 如果在圆角区域，投影到圆角边界
+            corner_x = half_w - radius
+            corner_y = half_h - radius
+            
+            if abs(x) > corner_x and abs(y) > corner_y:
+                # 在圆角区域
+                center_x = np.sign(x) * corner_x
+                center_y = np.sign(y) * corner_y
+                
+                dx = x - center_x
+                dy = y - center_y
+                dist = np.sqrt(dx*dx + dy*dy)
+                
+                if dist > radius:
+                    # 投影到圆角边界
+                    x = center_x + (dx / dist) * radius
+                    y = center_y + (dy / dist) * radius
+            
+            vertices.append([x, y])
+            
+            # 计算UV坐标
+            u_raw = (x + half_w) / width
+            v_raw = (y + half_h) / height
+            u = border_u + u_raw * (1 - 2 * border_u)
+            v = border_v + v_raw * (1 - 2 * border_v)
+            u = max(0, min(1, u))
+            v = max(0, min(1, v))
+            uvs.append([u, v])
+    
+    # 生成三角形索引
+    for i in range(grid_size):
+        for j in range(grid_size):
+            # 当前四边形的四个顶点索引
+            v0 = i * (grid_size + 1) + j
+            v1 = v0 + 1
+            v2 = v0 + (grid_size + 1)
+            v3 = v2 + 1
+            
+            # 分成两个三角形
+            indices.extend([v0, v1, v2])
+            indices.extend([v1, v3, v2])
+    
+    return vertices, uvs, indices
+
 def create_cube_geometry(width, height, thickness):
-    """创建立方体几何体"""
+    """创建带圆角倒角的立方体几何体（类似iPhone 6设计）"""
     half_w, half_h, half_t = width/2, height/2, thickness/2
+    
+    # 圆角半径
+    corner_radius = CORNER_RADIUS_CM / 100  # 转换为米
     
     # 孔洞参数
     hole_width = HOLE_WIDTH_MM / 1000
@@ -154,40 +234,126 @@ def create_cube_geometry(width, height, thickness):
                    hole_center_y - hole_height/2, hole_center_y + hole_height/2)
     
     print(f"🕳️ 一字孔设置: {HOLE_WIDTH_MM:.1f}x{HOLE_HEIGHT_MM:.1f}mm, 距顶部{HOLE_TOP_DISTANCE_CM:.1f}cm")
+    print(f"📐 圆角半径: {CORNER_RADIUS_CM:.1f}cm, 细分: {CORNER_SUBDIVISIONS}")
     
     faces = []
     
-    # 前后面（带孔洞）
-    front_back_configs = [
-        ([[-half_w, -half_h, half_t], [half_w, -half_h, half_t], 
-          [half_w, half_h, half_t], [-half_w, half_h, half_t]], [0, 0, 1]),
-        ([[half_w, -half_h, -half_t], [-half_w, -half_h, -half_t], 
-          [-half_w, half_h, -half_t], [half_w, half_h, -half_t]], [0, 0, -1])
-    ]
+    # 生成圆角矩形的前后面
+    def create_rounded_face_with_hole(z_pos, normal, hole_bounds, is_front=True):
+        """创建带孔洞的圆角面"""
+        vertices, face_uvs, normals, indices = [], [], [], []
+        
+        # 生成圆角矩形网格 - 使用前后面的高分辨率
+        rect_vertices, rect_uvs, rect_indices = generate_rounded_rectangle_mesh(
+            width, height, corner_radius, FRONT_BACK_SUBDIVISIONS)
+        
+        # 过滤掉孔洞内的顶点
+        vertex_map = {}
+        current_idx = 0
+        
+        for i, (vertex_2d, uv) in enumerate(zip(rect_vertices, rect_uvs)):
+            x, y = vertex_2d
+            # 检查是否在孔洞内
+            if not is_point_in_hole(x, y, hole_bounds):
+                pos = [x, y, z_pos]
+                vertices.append(pos)
+                
+                # 修正UV坐标 - 后面需要翻转U坐标
+                if is_front:
+                    face_uvs.append([uv[0], uv[1]])
+                else:
+                    face_uvs.append([1.0 - uv[0], uv[1]])  # 后面翻转U坐标
+                
+                normals.append(normal)
+                vertex_map[i] = current_idx
+                current_idx += 1
+        
+        # 生成三角形索引（需要重新映射）
+        for i in range(0, len(rect_indices), 3):
+            v0, v1, v2 = rect_indices[i:i+3]
+            if v0 in vertex_map and v1 in vertex_map and v2 in vertex_map:
+                if is_front:
+                    indices.extend([vertex_map[v0], vertex_map[v1], vertex_map[v2]])
+                else:
+                    # 后面需要翻转三角形顺序
+                    indices.extend([vertex_map[v0], vertex_map[v2], vertex_map[v1]])
+        
+        return vertices, face_uvs, normals, indices
     
-    for corners, normal in front_back_configs:
-        uvs = [[1, 0], [0, 0], [0, 1], [1, 1]]
-        face_data = create_face_with_hole([np.array(v) for v in corners], uvs, normal, 
-                                        FRONT_BACK_SUBDIVISIONS, hole_bounds)
-        faces.append(face_data)
+    # 前后面（带孔洞的圆角面）
+    front_face = create_rounded_face_with_hole(half_t, [0, 0, 1], hole_bounds, True)
+    back_face = create_rounded_face_with_hole(-half_t, [0, 0, -1], hole_bounds, False)
+    faces.extend([front_face, back_face])
     
-    # 四个侧面
-    side_configs = [
-        ([[half_w, -half_h, half_t], [half_w, -half_h, -half_t], 
-          [half_w, half_h, -half_t], [half_w, half_h, half_t]], [1, 0, 0]),
-        ([[-half_w, -half_h, -half_t], [-half_w, -half_h, half_t], 
-          [-half_w, half_h, half_t], [-half_w, half_h, -half_t]], [-1, 0, 0]),
-        ([[-half_w, half_h, half_t], [half_w, half_h, half_t], 
-          [half_w, half_h, -half_t], [-half_w, half_h, -half_t]], [0, 1, 0]),
-        ([[-half_w, -half_h, -half_t], [half_w, -half_h, -half_t], 
-          [half_w, -half_h, half_t], [-half_w, -half_h, half_t]], [0, -1, 0])
-    ]
+    # 生成圆角侧面
+    def create_rounded_side_faces():
+        """创建圆角立方体的侧面"""
+        side_faces = []
+        
+        # 使用侧面细分参数生成轮廓
+        outline_subdivisions = max(32, SIDE_SUBDIVISIONS * 16)  # 侧面轮廓细分数
+        
+        # 生成圆角矩形轮廓
+        half_w, half_h = width/2, height/2
+        corner_x = half_w - corner_radius
+        corner_y = half_h - corner_radius
+        
+        # 初始化轮廓顶点列表
+        outline_vertices = []
+        
+        # 四个圆角的轮廓点
+        corners = [
+            (corner_x, corner_y, 0, np.pi/2),      # 右上角
+            (-corner_x, corner_y, np.pi/2, np.pi), # 左上角
+            (-corner_x, -corner_y, np.pi, 3*np.pi/2), # 左下角
+            (corner_x, -corner_y, 3*np.pi/2, 2*np.pi)  # 右下角
+        ]
+        
+        for center_x, center_y, start_angle, end_angle in corners:
+            for i in range(outline_subdivisions // 4 + 1):
+                angle = start_angle + i * (end_angle - start_angle) / (outline_subdivisions // 4)
+                x = center_x + corner_radius * np.cos(angle)
+                y = center_y + corner_radius * np.sin(angle)
+                outline_vertices.append([x, y])
+        
+        # 为每条边创建侧面
+        num_vertices = len(outline_vertices)
+        for i in range(num_vertices):
+            next_i = (i + 1) % num_vertices
+            
+            # 当前边的四个顶点
+            x1, y1 = outline_vertices[i]
+            x2, y2 = outline_vertices[next_i]
+            
+            # 创建侧面四边形
+            corners = [
+                [x1, y1, half_t],   # 前面点1
+                [x2, y2, half_t],   # 前面点2
+                [x2, y2, -half_t],  # 后面点2
+                [x1, y1, -half_t]   # 后面点1
+            ]
+            
+            # 计算法向量
+            edge_vec = np.array([x2 - x1, y2 - y1, 0])
+            up_vec = np.array([0, 0, 1])
+            normal = np.cross(edge_vec, up_vec)
+            if np.linalg.norm(normal) > 0:
+                normal = normal / np.linalg.norm(normal)
+            else:
+                normal = [0, 0, 1]
+            
+            # 简化UV坐标 - 使用边框纹理
+            border_ratio = BORDER_CM / max(FIXED_WIDTH_CM, FIXED_HEIGHT_CM)
+            uvs = [[0, 0], [1, 0], [1, 1], [0, 1]]
+            
+            face_data = create_face_mesh([np.array(v) for v in corners], uvs, normal, 1)
+            side_faces.append(face_data)
+        
+        return side_faces
     
-    for corners, normal in side_configs:
-        # 侧面使用边框UV
-        uv = [[0, 0], [0, 1], [0, 1], [0, 0]] if normal[0] != 0 else [[0, 0], [1, 0], [1, 0], [0, 0]]
-        face_data = create_face_mesh([np.array(v) for v in corners], uv, normal, SIDE_SUBDIVISIONS)
-        faces.append(face_data)
+    # 添加圆角侧面
+    rounded_sides = create_rounded_side_faces()
+    faces.extend(rounded_sides)
     
     # 孔洞内壁面
     center_y = hole_y_offset - FIXED_HEIGHT_CM / 200
