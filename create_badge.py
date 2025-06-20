@@ -16,15 +16,11 @@ from pygltflib import *
 DEFAULT_THICKNESS_CM = 0.2  # 固定厚度为0.2cm
 FIXED_WIDTH_CM = 6.0        # 固定宽度为6.0cm
 FIXED_HEIGHT_CM = 9.0       # 固定高度为9.0cm
+BORDER_CM = 0.5             # 边框宽度为0.5cm
 TEXTURE_SIZE = 512
 FRONT_BACK_SUBDIVISIONS = 512
 SIDE_SUBDIVISIONS = 2
-TEXTURE_CANDIDATES = [
-    "image.png",
-    "image.png", 
-    "texture.png", 
-    "badge.png"
-]
+TEXTURE_FILE = "image.png"
 
 def load_texture(img_path):
     """加载并处理纹理图像，固定工牌尺寸为6.0x9.0x0.2 cm"""
@@ -64,9 +60,24 @@ def load_texture(img_path):
             print(f"📐 图片较高，添加左右填充: {new_width}x{height}")
         
         dimensions = (real_width_cm / 100, real_height_cm / 100, real_thickness_cm / 100)
-        texture_img = padded_img.resize((TEXTURE_SIZE, TEXTURE_SIZE), PILImage.LANCZOS)
+        
+        # 创建带边框的纹理图像
+        # 分别计算水平和垂直方向的边框像素数，确保左右和上下都是精确的边框
+        border_pixels_h = int(TEXTURE_SIZE * BORDER_CM / FIXED_WIDTH_CM)  # 水平边框像素
+        border_pixels_v = int(TEXTURE_SIZE * BORDER_CM / FIXED_HEIGHT_CM)  # 垂直边框像素
+        
+        inner_width = TEXTURE_SIZE - 2 * border_pixels_h
+        inner_height = TEXTURE_SIZE - 2 * border_pixels_v
+        
+        # 创建白色背景
+        texture_img = PILImage.new('RGB', (TEXTURE_SIZE, TEXTURE_SIZE), (255, 255, 255))
+        
+        # 将处理后的图像按比例缩放到内部区域
+        center_img = padded_img.resize((inner_width, inner_height), PILImage.LANCZOS)
+        texture_img.paste(center_img, (border_pixels_h, border_pixels_v))
         
         print(f"📏 固定尺寸: {real_width_cm:.1f}x{real_height_cm:.1f}x{real_thickness_cm:.1f} cm")
+        print(f"🖼️ 贴图留出{BORDER_CM}cm白色边框")
         return dimensions, texture_img
         
     except Exception as e:
@@ -109,36 +120,48 @@ def create_cube_mesh(width, height, thickness):
     - 前面：从左下角开始的顶点顺序，使用标准UV映射 (0,0)→(1,0)→(1,1)→(0,1)
     - 后面：从右下角开始的顶点顺序，使用水平翻转UV映射 (1,0)→(0,0)→(0,1)→(1,1)
     - 这样确保两个面都显示正确方向的纹理，避免左右反转
+    - 贴图留出边框，不铺满整个面
     """
     half_w, half_h, half_t = width/2, height/2, thickness/2
     
+    # 计算边框对应的UV偏移量
+    # 工牌尺寸为6x9cm，边框意味着有效贴图区域为(6-2*边框)x(9-2*边框)cm
+    u_border = (BORDER_CM / 100) / width   # 宽度方向的UV边框比例
+    v_border = (BORDER_CM / 100) / height  # 高度方向的UV边框比例
+    
     # 定义六个面的顶点、UV和法线
     face_configs = [
-        # 前面 - 高细分，正常UV映射
+        # 前面 - 高细分，带边框的UV映射
         # 顶点顺序: [左下前, 右下前, 右上前, 左下前] - 从左下开始逆时针
         ([[-half_w, -half_h, half_t], [half_w, -half_h, half_t], 
           [half_w, half_h, half_t], [-half_w, half_h, half_t]], 
-         [[0, 0], [1, 0], [1, 1], [0, 1]], [0, 0, 1], FRONT_BACK_SUBDIVISIONS),
+         [[u_border, v_border], [1-u_border, v_border], [1-u_border, 1-v_border], [u_border, 1-v_border]], 
+         [0, 0, 1], FRONT_BACK_SUBDIVISIONS),
         
-        # 后面 - 高细分，水平翻转UV映射以修复镜像问题
+        # 后面 - 高细分，带边框的水平翻转UV映射以修复镜像问题
         # 顶点顺序: [右下后, 左下后, 左上后, 右上后] - 从右下开始逆时针
         ([[half_w, -half_h, -half_t], [-half_w, -half_h, -half_t], 
           [-half_w, half_h, -half_t], [half_w, half_h, -half_t]], 
-         [[1, 0], [0, 0], [0, 1], [1, 1]], [0, 0, -1], FRONT_BACK_SUBDIVISIONS),
+         [[1-u_border, v_border], [u_border, v_border], [u_border, 1-v_border], [1-u_border, 1-v_border]], 
+         [0, 0, -1], FRONT_BACK_SUBDIVISIONS),
         
-        # 四个侧面 - 低细分
+        # 四个侧面 - 低细分，使用边框区域的白色
+        # 右侧面 - 使用纹理右边框的白色区域
         ([[half_w, -half_h, half_t], [half_w, -half_h, -half_t], 
           [half_w, half_h, -half_t], [half_w, half_h, half_t]], 
-         [[0.98, 0], [0.98, 1], [1, 1], [1, 0]], [1, 0, 0], SIDE_SUBDIVISIONS),
+         [[1-u_border/2, v_border], [1-u_border/2, 1-v_border], [1-u_border/2, 1-v_border], [1-u_border/2, v_border]], [1, 0, 0], SIDE_SUBDIVISIONS),
+        # 左侧面 - 使用纹理左边框的白色区域
         ([[-half_w, -half_h, -half_t], [-half_w, -half_h, half_t], 
           [-half_w, half_h, half_t], [-half_w, half_h, -half_t]], 
-         [[0.02, 0], [0.02, 1], [0, 1], [0, 0]], [-1, 0, 0], SIDE_SUBDIVISIONS),
+         [[u_border/2, v_border], [u_border/2, 1-v_border], [u_border/2, 1-v_border], [u_border/2, v_border]], [-1, 0, 0], SIDE_SUBDIVISIONS),
+        # 上侧面 - 使用纹理上边框的白色区域
         ([[-half_w, half_h, half_t], [half_w, half_h, half_t], 
           [half_w, half_h, -half_t], [-half_w, half_h, -half_t]], 
-         [[0, 0.98], [1, 0.98], [1, 1], [0, 1]], [0, 1, 0], SIDE_SUBDIVISIONS),
+         [[u_border, 1-v_border/2], [1-u_border, 1-v_border/2], [1-u_border, 1-v_border/2], [u_border, 1-v_border/2]], [0, 1, 0], SIDE_SUBDIVISIONS),
+        # 下侧面 - 使用纹理下边框的白色区域
         ([[-half_w, -half_h, -half_t], [half_w, -half_h, -half_t], 
           [half_w, -half_h, half_t], [-half_w, -half_h, half_t]], 
-         [[0, 0], [1, 0], [1, 0.02], [0, 0.02]], [0, -1, 0], SIDE_SUBDIVISIONS)
+         [[u_border, v_border/2], [1-u_border, v_border/2], [1-u_border, v_border/2], [u_border, v_border/2]], [0, -1, 0], SIDE_SUBDIVISIONS)
     ]
     
     all_vertices, all_uvs, all_normals, all_indices = [], [], [], []
@@ -330,10 +353,9 @@ def convert_to_obj(glb_path, obj_path):
 
 def find_texture_file():
     """查找纹理文件"""
-    for filename in TEXTURE_CANDIDATES:
-        path = os.path.join(os.getcwd(), filename)
-        if os.path.exists(path):
-            return path
+    path = os.path.join(os.getcwd(), TEXTURE_FILE)
+    if os.path.exists(path):
+        return path
     return None
 
 def main():
