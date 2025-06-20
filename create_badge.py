@@ -13,20 +13,21 @@ import trimesh
 from pygltflib import *
 
 # 常量定义
-DEFAULT_THICKNESS_CM = 0.5
-DEFAULT_SIZE_CM = 6.0
+DEFAULT_THICKNESS_CM = 0.2  # 固定厚度为0.2cm
+FIXED_WIDTH_CM = 6.0        # 固定宽度为6.0cm
+FIXED_HEIGHT_CM = 9.0       # 固定高度为9.0cm
 TEXTURE_SIZE = 512
 FRONT_BACK_SUBDIVISIONS = 512
 SIDE_SUBDIVISIONS = 2
 TEXTURE_CANDIDATES = [
-    "wechat_2025-06-20_092203_424.png",
+    "image.png",
     "image.png", 
     "texture.png", 
     "badge.png"
 ]
 
 def load_texture(img_path):
-    """加载并处理纹理图像"""
+    """加载并处理纹理图像，固定工牌尺寸为6.0x9.0x0.2 cm"""
     if not os.path.exists(img_path):
         print(f"❌ 图片文件不存在: {img_path}")
         return None, None
@@ -38,18 +39,34 @@ def load_texture(img_path):
         
         print(f"📸 图片: {os.path.basename(img_path)} ({width}x{height})")
         
-        # 计算物理尺寸
-        if aspect_ratio < 1.0:
-            real_width_cm = DEFAULT_SIZE_CM
-            real_height_cm = real_width_cm / aspect_ratio
+        # 固定工牌物理尺寸
+        real_width_cm = FIXED_WIDTH_CM
+        real_height_cm = FIXED_HEIGHT_CM
+        real_thickness_cm = DEFAULT_THICKNESS_CM
+        
+        # 计算工牌的宽高比
+        badge_aspect_ratio = real_width_cm / real_height_cm
+        
+        # 根据图片和工牌的宽高比关系来处理纹理
+        if aspect_ratio > badge_aspect_ratio:
+            # 图片比工牌更宽，需要在上下添加填充
+            new_height = int(width / badge_aspect_ratio)
+            padded_img = PILImage.new('RGB', (width, new_height), (255, 255, 255))
+            y_offset = (new_height - height) // 2
+            padded_img.paste(img, (0, y_offset))
+            print(f"📐 图片较宽，添加上下填充: {width}x{new_height}")
         else:
-            real_height_cm = DEFAULT_SIZE_CM
-            real_width_cm = real_height_cm * aspect_ratio
+            # 图片比工牌更高，需要在左右添加填充
+            new_width = int(height * badge_aspect_ratio)
+            padded_img = PILImage.new('RGB', (new_width, height), (255, 255, 255))
+            x_offset = (new_width - width) // 2
+            padded_img.paste(img, (x_offset, 0))
+            print(f"📐 图片较高，添加左右填充: {new_width}x{height}")
         
-        dimensions = (real_width_cm / 100, real_height_cm / 100, DEFAULT_THICKNESS_CM / 100)
-        texture_img = img.resize((TEXTURE_SIZE, TEXTURE_SIZE), PILImage.LANCZOS)
+        dimensions = (real_width_cm / 100, real_height_cm / 100, real_thickness_cm / 100)
+        texture_img = padded_img.resize((TEXTURE_SIZE, TEXTURE_SIZE), PILImage.LANCZOS)
         
-        print(f"📏 尺寸: {real_width_cm:.1f}x{real_height_cm:.1f}x{DEFAULT_THICKNESS_CM:.1f} cm")
+        print(f"📏 固定尺寸: {real_width_cm:.1f}x{real_height_cm:.1f}x{real_thickness_cm:.1f} cm")
         return dimensions, texture_img
         
     except Exception as e:
@@ -321,9 +338,9 @@ def find_texture_file():
 
 def main():
     """主函数"""
-    print("🔲 自适应立方体GLB工牌生成器")
+    print("🔲 固定尺寸立方体GLB工牌生成器")
     print("=" * 40)
-    print("📐 自动选择: 中密度 (128x128) - 平衡质量")
+    print("📐 固定尺寸: 6.0x9.0x0.2 cm - 图片自适应缩放")
     
     # 查找并处理纹理
     texture_path = find_texture_file()
@@ -336,7 +353,7 @@ def main():
         dimensions, texture_img = result
     else:
         print("⚠️ 使用默认尺寸")
-        dimensions = (0.060, 0.091, 0.005)
+        dimensions = (FIXED_WIDTH_CM / 100, FIXED_HEIGHT_CM / 100, DEFAULT_THICKNESS_CM / 100)
         texture_img = None
     
     # 生成文件名
