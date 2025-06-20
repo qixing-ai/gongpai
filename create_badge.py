@@ -18,7 +18,6 @@ from pygltflib import (
 
 # 常量定义
 FIXED_WIDTH_CM, FIXED_HEIGHT_CM, DEFAULT_THICKNESS_CM = 6.0, 9.0, 0.2
-BORDER_CM = 0.5
 TEXTURE_SIZE = 512
 FRONT_BACK_SUBDIVISIONS, SIDE_SUBDIVISIONS = 512, 2
 TEXTURE_FILE = "1.png"
@@ -60,14 +59,8 @@ def load_and_process_texture(img_path):
         padded_img = PILImage.new('RGB', new_size, (255, 255, 255))
         padded_img.paste(img, offset)
         
-        # 创建带边框的纹理
-        border_h = int(TEXTURE_SIZE * BORDER_CM / FIXED_WIDTH_CM)
-        border_v = int(TEXTURE_SIZE * BORDER_CM / FIXED_HEIGHT_CM)
-        inner_size = (TEXTURE_SIZE - 2 * border_h, TEXTURE_SIZE - 2 * border_v)
-        
-        texture_img = PILImage.new('RGB', (TEXTURE_SIZE, TEXTURE_SIZE), (255, 255, 255))
-        center_img = padded_img.resize(inner_size, PILImage.LANCZOS)
-        texture_img.paste(center_img, (border_h, border_v))
+        # 直接使用调整后的图片作为纹理
+        texture_img = padded_img.resize((TEXTURE_SIZE, TEXTURE_SIZE), PILImage.LANCZOS)
         
         print(f"📏 固定尺寸: {FIXED_WIDTH_CM:.1f}x{FIXED_HEIGHT_CM:.1f}x{DEFAULT_THICKNESS_CM:.1f} cm")
         return dimensions, texture_img
@@ -152,10 +145,6 @@ def generate_rounded_rectangle_mesh(width, height, radius, subdivisions):
     max_radius = min(half_w, half_h)
     radius = min(radius, max_radius)
     
-    # 计算边框在UV空间中的比例
-    border_u = BORDER_CM / FIXED_WIDTH_CM
-    border_v = BORDER_CM / FIXED_HEIGHT_CM
-    
     # 创建规则网格
     grid_size = subdivisions
     vertices = []
@@ -196,8 +185,8 @@ def generate_rounded_rectangle_mesh(width, height, radius, subdivisions):
             # 计算UV坐标
             u_raw = (x + half_w) / width
             v_raw = (y + half_h) / height
-            u = border_u + u_raw * (1 - 2 * border_u)
-            v = border_v + v_raw * (1 - 2 * border_v)
+            u = u_raw
+            v = v_raw
             u = max(0, min(1, u))
             v = max(0, min(1, v))
             uvs.append([u, v])
@@ -342,8 +331,7 @@ def create_cube_geometry(width, height, thickness):
             else:
                 normal = [0, 0, 1]
             
-            # 简化UV坐标 - 使用边框纹理
-            border_ratio = BORDER_CM / max(FIXED_WIDTH_CM, FIXED_HEIGHT_CM)
+            # 简化UV坐标
             uvs = [[0, 0], [1, 0], [1, 1], [0, 1]]
             
             face_data = create_face_mesh([np.array(v) for v in corners], uvs, normal, 1)
