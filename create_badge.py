@@ -10,7 +10,11 @@ import base64
 import os
 import io
 import trimesh
-from pygltflib import *
+from pygltflib import (
+    GLTF2, Buffer, BufferView, Accessor, Material, PbrMetallicRoughness, 
+    TextureInfo, Image, Sampler, Texture, Mesh, Primitive, Attributes, Node, Scene,
+    ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, FLOAT, UNSIGNED_SHORT, UNSIGNED_INT
+)
 
 # 常量定义
 FIXED_WIDTH_CM, FIXED_HEIGHT_CM, DEFAULT_THICKNESS_CM = 6.0, 9.0, 0.2
