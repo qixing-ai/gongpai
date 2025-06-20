@@ -1,0 +1,7 @@
+# 工牌GLB生成器依赖包
+trimesh>=3.15.0
+numpy>=1.21.0
+Pillow>=9.0.0
+pygltflib>=1.13.0
+networkx>=2.6.0
+scipy>=1.7.0 

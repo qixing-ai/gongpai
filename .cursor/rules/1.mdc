@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+运行命令前要使用这个环境conda activate badge_env
