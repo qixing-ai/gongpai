@@ -258,11 +258,11 @@ def create_cube_geometry(width, height, thickness):
                 pos = [x, y, z_pos]
                 vertices.append(pos)
                 
-                # 修正UV坐标 - 后面需要翻转U坐标
+                # 修正UV坐标 - 只有前面进行镜像处理
                 if is_front:
-                    face_uvs.append([uv[0], uv[1]])
+                    face_uvs.append([1.0 - uv[0], uv[1]])  # 前面镜像
                 else:
-                    face_uvs.append([1.0 - uv[0], uv[1]])  # 后面翻转U坐标
+                    face_uvs.append([uv[0], uv[1]])  # 后面保持原样
                 
                 normals.append(normal)
                 vertex_map[i] = current_idx
