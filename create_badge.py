@@ -85,18 +85,29 @@ def create_face_vertices(corners, uvs, normal, subdivisions):
     return vertices, face_uvs, normals, indices
 
 def create_cube_mesh(width, height, thickness):
-    """创建立方体网格数据"""
+    """
+    创建立方体网格数据
+    
+    修复镜像问题：
+    - 前面：从左下角开始的顶点顺序，使用标准UV映射 (0,0)→(1,0)→(1,1)→(0,1)
+    - 后面：从右下角开始的顶点顺序，使用水平翻转UV映射 (1,0)→(0,0)→(0,1)→(1,1)
+    - 这样确保两个面都显示正确方向的纹理，避免左右反转
+    """
     half_w, half_h, half_t = width/2, height/2, thickness/2
     
     # 定义六个面的顶点、UV和法线
     face_configs = [
-        # 前面和后面 - 高细分
+        # 前面 - 高细分，正常UV映射
+        # 顶点顺序: [左下前, 右下前, 右上前, 左下前] - 从左下开始逆时针
         ([[-half_w, -half_h, half_t], [half_w, -half_h, half_t], 
           [half_w, half_h, half_t], [-half_w, half_h, half_t]], 
          [[0, 0], [1, 0], [1, 1], [0, 1]], [0, 0, 1], FRONT_BACK_SUBDIVISIONS),
+        
+        # 后面 - 高细分，水平翻转UV映射以修复镜像问题
+        # 顶点顺序: [右下后, 左下后, 左上后, 右上后] - 从右下开始逆时针
         ([[half_w, -half_h, -half_t], [-half_w, -half_h, -half_t], 
           [-half_w, half_h, -half_t], [half_w, half_h, -half_t]], 
-         [[0, 0], [1, 0], [1, 1], [0, 1]], [0, 0, -1], FRONT_BACK_SUBDIVISIONS),
+         [[1, 0], [0, 0], [0, 1], [1, 1]], [0, 0, -1], FRONT_BACK_SUBDIVISIONS),
         
         # 四个侧面 - 低细分
         ([[half_w, -half_h, half_t], [half_w, -half_h, -half_t], 
