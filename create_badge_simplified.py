@@ -17,7 +17,7 @@ FIXED_WIDTH_CM, FIXED_HEIGHT_CM, DEFAULT_THICKNESS_CM = 6.0, 9.0, 0.2
 BORDER_CM = 1.5
 TEXTURE_SIZE = 512
 FRONT_BACK_SUBDIVISIONS, SIDE_SUBDIVISIONS = 512, 2
-TEXTURE_FILE = "image.png"
+TEXTURE_FILE = "2.png"
 
 def load_and_process_texture(img_path):
     """加载并处理纹理图像"""
@@ -94,8 +94,8 @@ def create_face_mesh(corners, uvs, normal, subdivisions):
 def create_cube_geometry(width, height, thickness):
     """创建立方体几何体"""
     half_w, half_h, half_t = width/2, height/2, thickness/2
-    u_border = (BORDER_CM / 100) / width
-    v_border = (BORDER_CM / 100) / height
+    u_border = BORDER_CM / (width * 100)  # BORDER_CM(cm) / width(cm) 
+    v_border = BORDER_CM / (height * 100)  # BORDER_CM(cm) / height(cm)
     
     # 面配置：[顶点坐标, UV坐标, 法线, 细分数]
     faces = [
