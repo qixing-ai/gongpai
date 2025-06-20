@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-创建自适应尺寸的立方体GLB工牌模型 - 简化版本
+创建自适应尺寸的立方体GLB工牌模型
 自动分析图像尺寸并计算合适的物理尺寸
 """
 
@@ -14,7 +14,7 @@ from pygltflib import *
 
 # 常量定义
 FIXED_WIDTH_CM, FIXED_HEIGHT_CM, DEFAULT_THICKNESS_CM = 6.0, 9.0, 0.2
-BORDER_CM = 1.5
+BORDER_CM = 0.2  # 减小边框到0.2cm
 TEXTURE_SIZE = 512
 FRONT_BACK_SUBDIVISIONS, SIDE_SUBDIVISIONS = 512, 2
 TEXTURE_FILE = "2.png"
@@ -53,7 +53,10 @@ def load_and_process_texture(img_path):
         border_v = int(TEXTURE_SIZE * BORDER_CM / FIXED_HEIGHT_CM)
         inner_size = (TEXTURE_SIZE - 2 * border_h, TEXTURE_SIZE - 2 * border_v)
         
-        texture_img = PILImage.new('RGB', (TEXTURE_SIZE, TEXTURE_SIZE), (255, 255, 255))
+        print(f"🎨 纹理边框: 水平{border_h}px, 垂直{border_v}px")
+        print(f"📷 图片区域: {inner_size[0]}x{inner_size[1]}px (在{TEXTURE_SIZE}x{TEXTURE_SIZE}px纹理中)")
+        
+        texture_img = PILImage.new('RGB', (TEXTURE_SIZE, TEXTURE_SIZE), (255, 255, 255))  # 白色边框
         center_img = padded_img.resize(inner_size, PILImage.LANCZOS)
         texture_img.paste(center_img, (border_h, border_v))
         
@@ -94,20 +97,23 @@ def create_face_mesh(corners, uvs, normal, subdivisions):
 def create_cube_geometry(width, height, thickness):
     """创建立方体几何体"""
     half_w, half_h, half_t = width/2, height/2, thickness/2
-    u_border = BORDER_CM / (width * 100)  # BORDER_CM(cm) / width(cm) 
-    v_border = BORDER_CM / (height * 100)  # BORDER_CM(cm) / height(cm)
+    u_border = BORDER_CM / FIXED_WIDTH_CM  # 边框占宽度的比例
+    v_border = BORDER_CM / FIXED_HEIGHT_CM  # 边框占高度的比例
+    
+    print(f"🔲 边框设置: {BORDER_CM}cm")
+    print(f"📐 UV边框比例: u={u_border:.3f} ({u_border*100:.1f}%), v={v_border:.3f} ({v_border*100:.1f}%)")
     
     # 面配置：[顶点坐标, UV坐标, 法线, 细分数]
     faces = [
-        # 前面和后面 - 高细分
+        # 前面和后面 - 高细分，使用完整纹理（边框已在纹理中预留）
         ([[-half_w, -half_h, half_t], [half_w, -half_h, half_t], 
           [half_w, half_h, half_t], [-half_w, half_h, half_t]], 
-         [[u_border, v_border], [1-u_border, v_border], [1-u_border, 1-v_border], [u_border, 1-v_border]], 
+         [[0, 0], [1, 0], [1, 1], [0, 1]], 
          [0, 0, 1], FRONT_BACK_SUBDIVISIONS),
         
         ([[half_w, -half_h, -half_t], [-half_w, -half_h, -half_t], 
           [-half_w, half_h, -half_t], [half_w, half_h, -half_t]], 
-         [[1-u_border, v_border], [u_border, v_border], [u_border, 1-v_border], [1-u_border, 1-v_border]], 
+         [[1, 0], [0, 0], [0, 1], [1, 1]], 
          [0, 0, -1], FRONT_BACK_SUBDIVISIONS),
     ]
     
@@ -123,12 +129,12 @@ def create_cube_geometry(width, height, thickness):
           [half_w, -half_h, half_t], [-half_w, -half_h, half_t]], [0, -1, 0])
     ]
     
-    # 为侧面添加边框UV
+    # 为侧面添加边框UV - 指向纹理边框区域
     for corners, normal in side_faces:
-        if normal[0] != 0:  # 左右侧面
-            uv = [[u_border/2, v_border], [u_border/2, 1-v_border], [u_border/2, 1-v_border], [u_border/2, v_border]]
-        else:  # 上下侧面
-            uv = [[u_border, v_border/2], [1-u_border, v_border/2], [1-u_border, v_border/2], [u_border, v_border/2]]
+        if normal[0] != 0:  # 左右侧面 - 使用左右边框
+            uv = [[0, 0], [0, 1], [0, 1], [0, 0]]  # 指向纹理左边框
+        else:  # 上下侧面 - 使用上下边框
+            uv = [[0, 0], [1, 0], [1, 0], [0, 0]]  # 指向纹理下边框
         faces.append((corners, uv, normal, SIDE_SUBDIVISIONS))
     
     # 合并所有面的数据
