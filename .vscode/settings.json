@@ -14,5 +14,6 @@
     "python.autoComplete.addBrackets": true,
     "files.associations": {
         "*.py": "python"
-    }
+    },
+    "python.analysis.completeFunctionParens": true
 } 

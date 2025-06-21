@@ -16,45 +16,32 @@ from pygltflib import (
     ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, FLOAT, UNSIGNED_SHORT, UNSIGNED_INT
 )
 
-# 常量定义
-FIXED_WIDTH_CM, FIXED_HEIGHT_CM, DEFAULT_THICKNESS_CM = 6.0, 9.0, 0.2
-TEXTURE_SIZE = 512
-FRONT_BACK_SUBDIVISIONS, SIDE_SUBDIVISIONS = 512, 2
-TEXTURE_FILE = "1.png"
-OUTPUT_DIR = "output"
-
-# UV映射尺寸参数
-UV_MAPPING_MAX_WIDTH_CM = 5.0   # UV映射最大宽度（厘米）
-UV_MAPPING_MAX_HEIGHT_CM = 7.0  # UV映射最大高度（厘米）
-
-# 一字孔常量定义
-HOLE_WIDTH_MM = 12.0
-HOLE_HEIGHT_MM = 2.0
-HOLE_TOP_DISTANCE_CM = 8.7
-
-# 圆角倒角常量定义（类似iPhone 6的圆角设计）
-CORNER_RADIUS_CM = 0.8  # 圆角半径，类似iPhone 6的圆角大小
-CORNER_SUBDIVISIONS = 16  # 圆角细分数，数值越大越平滑
-
-def calculate_uv_mapping_size(img_width, img_height):
-    """根据图片宽高比计算不变形的UV映射尺寸"""
-    max_width = UV_MAPPING_MAX_WIDTH_CM / 100   # 转换为米
-    max_height = UV_MAPPING_MAX_HEIGHT_CM / 100  # 转换为米
+# 配置常量
+class Config:
+    # 工牌尺寸
+    FIXED_WIDTH_CM = 6.0
+    FIXED_HEIGHT_CM = 9.0
+    DEFAULT_THICKNESS_CM = 0.2
     
-    # 计算图片宽高比
-    img_ratio = img_width / img_height
-    max_ratio = UV_MAPPING_MAX_WIDTH_CM / UV_MAPPING_MAX_HEIGHT_CM
+    # 纹理设置
+    TEXTURE_SIZE = 512
+    TEXTURE_FILE = "1.png"
+    OUTPUT_DIR = "output"
     
-    if img_ratio > max_ratio:
-        # 图片更宽，以最大宽度为准
-        uv_width = max_width
-        uv_height = max_width / img_ratio
-    else:
-        # 图片更高，以最大高度为准
-        uv_height = max_height
-        uv_width = max_height * img_ratio
+    # 网格细分 - 简化
+    SUBDIVISIONS = 512  # 统一细分数
     
-    return uv_width, uv_height
+    # UV映射区域
+    UV_MAPPING_MAX_WIDTH_CM = 5.0
+    UV_MAPPING_MAX_HEIGHT_CM = 7.0
+    
+    # 孔洞参数
+    HOLE_WIDTH_MM = 12.0
+    HOLE_HEIGHT_MM = 2.0
+    HOLE_TOP_DISTANCE_CM = 8.7
+    
+    # 圆角参数
+    CORNER_RADIUS_CM = 0.8
 
 def load_and_process_texture(img_path):
     """加载并处理纹理图像"""
@@ -67,16 +54,25 @@ def load_and_process_texture(img_path):
         w, h = img.size
         print(f"📸 图片: {os.path.basename(img_path)} ({w}x{h})")
         
-        # 计算动态UV映射尺寸（保持图片不变形）
-        uv_width, uv_height = calculate_uv_mapping_size(w, h)
-        print(f"🎨 UV映射区域: {uv_width*100:.1f}x{uv_height*100:.1f} cm (保持图片比例)")
-        
-        # 固定工牌尺寸
-        dimensions = (FIXED_WIDTH_CM / 100, FIXED_HEIGHT_CM / 100, DEFAULT_THICKNESS_CM / 100)
-        badge_ratio = FIXED_WIDTH_CM / FIXED_HEIGHT_CM
+        # 计算UV映射尺寸
+        max_width = Config.UV_MAPPING_MAX_WIDTH_CM / 100
+        max_height = Config.UV_MAPPING_MAX_HEIGHT_CM / 100
         img_ratio = w / h
+        max_ratio = Config.UV_MAPPING_MAX_WIDTH_CM / Config.UV_MAPPING_MAX_HEIGHT_CM
         
-        # 调整图片尺寸
+        if img_ratio > max_ratio:
+            uv_width, uv_height = max_width, max_width / img_ratio
+        else:
+            uv_width, uv_height = max_height * img_ratio, max_height
+            
+        print(f"🎨 UV映射区域: {uv_width*100:.1f}x{uv_height*100:.1f} cm")
+        
+        # 工牌尺寸
+        dimensions = (Config.FIXED_WIDTH_CM / 100, Config.FIXED_HEIGHT_CM / 100, Config.DEFAULT_THICKNESS_CM / 100)
+        
+        # 调整图片适应工牌比例
+        badge_ratio = Config.FIXED_WIDTH_CM / Config.FIXED_HEIGHT_CM
+        
         if img_ratio > badge_ratio:
             new_size = (w, int(w / badge_ratio))
             offset = (0, (new_size[1] - h) // 2)
@@ -86,342 +82,211 @@ def load_and_process_texture(img_path):
         
         padded_img = PILImage.new('RGB', new_size, (255, 255, 255))
         padded_img.paste(img, offset)
+        texture_img = padded_img.resize((Config.TEXTURE_SIZE, Config.TEXTURE_SIZE), PILImage.LANCZOS)
         
-        # 直接使用调整后的图片作为纹理
-        texture_img = padded_img.resize((TEXTURE_SIZE, TEXTURE_SIZE), PILImage.LANCZOS)
-        
-        print(f"📏 固定尺寸: {FIXED_WIDTH_CM:.1f}x{FIXED_HEIGHT_CM:.1f}x{DEFAULT_THICKNESS_CM:.1f} cm")
+        print(f"📏 固定尺寸: {Config.FIXED_WIDTH_CM:.1f}x{Config.FIXED_HEIGHT_CM:.1f}x{Config.DEFAULT_THICKNESS_CM:.1f} cm")
         return dimensions, texture_img, (uv_width, uv_height)
         
     except Exception as e:
         print(f"❌ 处理失败: {e}")
         return None, None, None
 
-def bilinear_interpolate(corners, uvs, u, v):
-    """双线性插值计算位置和UV"""
-    pos = ((1-u)*(1-v)*corners[0] + u*(1-v)*corners[1] + 
-           u*v*corners[2] + (1-u)*v*corners[3])
-    uv = ((1-u)*(1-v)*np.array(uvs[0]) + u*(1-v)*np.array(uvs[1]) + 
-          u*v*np.array(uvs[2]) + (1-u)*v*np.array(uvs[3]))
-    return pos, uv
-
-def create_face_mesh(corners, uvs, normal, subdivisions):
-    """创建单个面的网格数据"""
-    vertices, face_uvs, normals, indices = [], [], [], []
+def create_face_mesh(width, height, thickness, hole_bounds, uv_mapping_size, is_front=True):
+    """创建面网格（简化版）"""
+    half_w, half_h, half_t = width/2, height/2, thickness/2
+    z_pos = half_t if is_front else -half_t
+    normal = [0, 0, 1] if is_front else [0, 0, -1]
     
-    for i in range(subdivisions + 1):
-        for j in range(subdivisions + 1):
-            u, v = i / subdivisions, j / subdivisions
-            pos, uv = bilinear_interpolate(corners, uvs, u, v)
-            
-            vertices.append(pos)
-            face_uvs.append(uv)
-            normals.append(normal)
-    
-    # 生成三角形索引
-    for i in range(subdivisions):
-        for j in range(subdivisions):
-            base = i * (subdivisions + 1) + j
-            indices.extend([base, base + 1, base + subdivisions + 2, 
-                          base, base + subdivisions + 2, base + subdivisions + 1])
-    
-    return vertices, face_uvs, normals, indices
-
-def is_point_in_hole(x, y, hole_bounds):
-    """检查点是否在孔洞内"""
-    left, right, bottom, top = hole_bounds
-    return left <= x <= right and bottom <= y <= top
-
-def create_face_with_hole(corners, uvs, normal, subdivisions, hole_bounds):
-    """创建带孔洞的面网格"""
-    vertices, face_uvs, normals, indices = [], [], [], []
+    vertices, uvs, normals, indices = [], [], [], []
     vertex_map = {}
     current_idx = 0
     
-    # 生成顶点（跳过孔洞内的点）
-    for i in range(subdivisions + 1):
-        for j in range(subdivisions + 1):
-            u, v = i / subdivisions, j / subdivisions
-            pos, uv_coord = bilinear_interpolate(corners, uvs, u, v)
-            
-            if not is_point_in_hole(pos[0], pos[1], hole_bounds):
-                vertices.append(pos)
-                face_uvs.append(uv_coord)
-                normals.append(normal)
-                vertex_map[(i, j)] = current_idx
-                current_idx += 1
-    
-    # 生成三角形索引
-    for i in range(subdivisions):
-        for j in range(subdivisions):
-            quad_vertices = [(i, j), (i+1, j), (i+1, j+1), (i, j+1)]
-            if all(pos in vertex_map for pos in quad_vertices):
-                v0, v1, v2, v3 = [vertex_map[pos] for pos in quad_vertices]
-                indices.extend([v0, v1, v2, v0, v2, v3])
-    
-    return vertices, face_uvs, normals, indices
-
-def create_hole_wall(corners, uvs, normal):
-    """创建孔洞内壁面"""
-    return create_face_mesh([np.array(v) for v in corners], uvs, normal, 2)
-
-def generate_rounded_rectangle_mesh(width, height, radius, subdivisions, uv_mapping_size=None):
-    """生成圆角矩形的网格数据（使用规则网格而不是辐射状）"""
-    half_w, half_h = width / 2, height / 2
-    
-    # 确保圆角半径不超过矩形的一半
-    max_radius = min(half_w, half_h)
-    radius = min(radius, max_radius)
-    
-    # 创建规则网格
-    grid_size = subdivisions
-    vertices = []
-    uvs = []
-    indices = []
-    
-    # UV映射参数 - 使用动态尺寸或默认值
-    if uv_mapping_size:
-        uv_width, uv_height = uv_mapping_size
-    else:
-        uv_width = UV_MAPPING_MAX_WIDTH_CM / 100   # 转换为米
-        uv_height = UV_MAPPING_MAX_HEIGHT_CM / 100  # 转换为米
-    
-    # 计算UV映射的居中偏移
+    # UV映射参数
+    uv_width, uv_height = uv_mapping_size
     uv_offset_x = (width - uv_width) / 2
     uv_offset_y = (height - uv_height) / 2
     
-    # 生成网格顶点
-    for i in range(grid_size + 1):
-        for j in range(grid_size + 1):
-            # 在[-1, 1]范围内的参数坐标
-            u_param = (i / grid_size) * 2 - 1  # -1 到 1
-            v_param = (j / grid_size) * 2 - 1  # -1 到 1
+    # 简化网格生成
+    subdivisions = Config.SUBDIVISIONS
+    for i in range(subdivisions + 1):
+        for j in range(subdivisions + 1):
+            # 计算位置
+            x = (i / subdivisions - 0.5) * width
+            y = (j / subdivisions - 0.5) * height
             
-            # 转换为世界坐标
-            x = u_param * half_w
-            y = v_param * half_h
-            
-            # 如果在圆角区域，投影到圆角边界
-            corner_x = half_w - radius
-            corner_y = half_h - radius
+            # 简化圆角处理
+            corner_radius = Config.CORNER_RADIUS_CM / 100
+            corner_x = half_w - corner_radius
+            corner_y = half_h - corner_radius
             
             if abs(x) > corner_x and abs(y) > corner_y:
-                # 在圆角区域
                 center_x = np.sign(x) * corner_x
                 center_y = np.sign(y) * corner_y
-                
-                dx = x - center_x
-                dy = y - center_y
+                dx, dy = x - center_x, y - center_y
                 dist = np.sqrt(dx*dx + dy*dy)
+                if dist > corner_radius:
+                    x = center_x + (dx / dist) * corner_radius
+                    y = center_y + (dy / dist) * corner_radius
+            
+            # 检查孔洞
+            left, right, bottom, top = hole_bounds
+            if left <= x <= right and bottom <= y <= top:
+                continue
                 
-                if dist > radius:
-                    # 投影到圆角边界
-                    x = center_x + (dx / dist) * radius
-                    y = center_y + (dy / dist) * radius
+            vertices.append([x, y, z_pos])
+            normals.append(normal)
             
-            vertices.append([x, y])
+            # 计算UV
+            x_in_uv = x + width/2 - uv_offset_x
+            y_in_uv = y + height/2 - uv_offset_y
+            u = max(0, min(1, x_in_uv / uv_width)) if uv_width > 0 else 0.5
+            v = max(0, min(1, y_in_uv / uv_height)) if uv_height > 0 else 0.5
             
-            # 计算UV坐标 - 使用新的映射尺寸和居中逻辑
-            # 将世界坐标转换为相对于UV映射区域的坐标
-            x_in_uv_space = x + half_w - uv_offset_x  # 相对于UV映射区域左边界
-            y_in_uv_space = y + half_h - uv_offset_y  # 相对于UV映射区域底边界
-            
-            # 计算UV坐标（0-1范围）
-            if uv_width > 0 and uv_height > 0:
-                u = x_in_uv_space / uv_width
-                v = y_in_uv_space / uv_height
+            if is_front:
+                uvs.append([1.0 - u, v])
             else:
-                u = (x + half_w) / width
-                v = (y + half_h) / height
+                uvs.append([u, v])
             
-            # 限制UV坐标在0-1范围内，超出范围的部分将显示纹理边缘
-            u = max(0, min(1, u))
-            v = max(0, min(1, v))
-            uvs.append([u, v])
+            vertex_map[i * (subdivisions + 1) + j] = current_idx
+            current_idx += 1
     
-    # 生成三角形索引
-    for i in range(grid_size):
-        for j in range(grid_size):
-            # 当前四边形的四个顶点索引
-            v0 = i * (grid_size + 1) + j
-            v1 = v0 + 1
-            v2 = v0 + (grid_size + 1)
-            v3 = v2 + 1
+    # 生成索引
+    for i in range(subdivisions):
+        for j in range(subdivisions):
+            quad = [i * (subdivisions + 1) + j, (i + 1) * (subdivisions + 1) + j,
+                   (i + 1) * (subdivisions + 1) + j + 1, i * (subdivisions + 1) + j + 1]
             
-            # 分成两个三角形
-            indices.extend([v0, v1, v2])
-            indices.extend([v1, v3, v2])
+            if all(idx in vertex_map for idx in quad):
+                mapped = [vertex_map[idx] for idx in quad]
+                if is_front:
+                    indices.extend([mapped[0], mapped[1], mapped[2], mapped[0], mapped[2], mapped[3]])
+                else:
+                    indices.extend([mapped[0], mapped[2], mapped[1], mapped[0], mapped[3], mapped[2]])
     
-    return vertices, uvs, indices
+    return vertices, uvs, normals, indices
 
-def create_cube_geometry(width, height, thickness, uv_mapping_size=None):
-    """创建带圆角倒角的立方体几何体（类似iPhone 6设计）"""
+def create_side_mesh(width, height, thickness):
+    """创建侧面网格（简化版）"""
     half_w, half_h, half_t = width/2, height/2, thickness/2
+    corner_radius = Config.CORNER_RADIUS_CM / 100
     
-    # 圆角半径
-    corner_radius = CORNER_RADIUS_CM / 100  # 转换为米
+    # 简化轮廓生成
+    outline_points = 32
+    corner_x = half_w - corner_radius
+    corner_y = half_h - corner_radius
     
-    # 孔洞参数
-    hole_width = HOLE_WIDTH_MM / 1000
-    hole_height = HOLE_HEIGHT_MM / 1000
-    hole_y_offset = height - (HOLE_TOP_DISTANCE_CM / 100)
-    hole_center_y = hole_y_offset - height/2
+    outline_vertices = []
+    # 四个圆角
+    corners = [(corner_x, corner_y, 0, np.pi/2), (-corner_x, corner_y, np.pi/2, np.pi),
+               (-corner_x, -corner_y, np.pi, 3*np.pi/2), (corner_x, -corner_y, 3*np.pi/2, 2*np.pi)]
     
-    hole_bounds = (-hole_width/2, hole_width/2, 
-                   hole_center_y - hole_height/2, hole_center_y + hole_height/2)
+    for center_x, center_y, start_angle, end_angle in corners:
+        for i in range(outline_points // 4 + 1):
+            angle = start_angle + i * (end_angle - start_angle) / (outline_points // 4)
+            x = center_x + corner_radius * np.cos(angle)
+            y = center_y + corner_radius * np.sin(angle)
+            outline_vertices.append([x, y])
     
-    print(f"🕳️ 一字孔设置: {HOLE_WIDTH_MM:.1f}x{HOLE_HEIGHT_MM:.1f}mm, 距顶部{HOLE_TOP_DISTANCE_CM:.1f}cm")
-    print(f"📐 圆角半径: {CORNER_RADIUS_CM:.1f}cm, 细分: {CORNER_SUBDIVISIONS}")
+    # 创建侧面
+    all_vertices, all_uvs, all_normals, all_indices = [], [], [], []
     
-    faces = []
+    for i in range(len(outline_vertices)):
+        next_i = (i + 1) % len(outline_vertices)
+        x1, y1 = outline_vertices[i]
+        x2, y2 = outline_vertices[next_i]
+        
+        # 四个顶点
+        quad_vertices = [[x1, y1, half_t], [x2, y2, half_t], [x2, y2, -half_t], [x1, y1, -half_t]]
+        quad_uvs = [[0, 0], [1, 0], [1, 1], [0, 1]]
+        
+        # 计算法向量
+        edge_vec = np.array([x2 - x1, y2 - y1, 0])
+        normal = np.cross(edge_vec, [0, 0, 1])
+        if np.linalg.norm(normal) > 0:
+            normal = normal / np.linalg.norm(normal)
+        
+        base_idx = len(all_vertices)
+        all_vertices.extend(quad_vertices)
+        all_uvs.extend(quad_uvs)
+        all_normals.extend([normal] * 4)
+        all_indices.extend([base_idx, base_idx + 1, base_idx + 2, 
+                           base_idx, base_idx + 2, base_idx + 3])
     
-    # 生成圆角矩形的前后面
-    def create_rounded_face_with_hole(z_pos, normal, hole_bounds, is_front=True):
-        """创建带孔洞的圆角面"""
-        vertices, face_uvs, normals, indices = [], [], [], []
-        
-        # 生成圆角矩形网格 - 使用前后面的高分辨率
-        rect_vertices, rect_uvs, rect_indices = generate_rounded_rectangle_mesh(
-            width, height, corner_radius, FRONT_BACK_SUBDIVISIONS, uv_mapping_size)
-        
-        # 过滤掉孔洞内的顶点
-        vertex_map = {}
-        current_idx = 0
-        
-        for i, (vertex_2d, uv) in enumerate(zip(rect_vertices, rect_uvs)):
-            x, y = vertex_2d
-            # 检查是否在孔洞内
-            if not is_point_in_hole(x, y, hole_bounds):
-                pos = [x, y, z_pos]
-                vertices.append(pos)
-                
-                # 修正UV坐标 - 只有前面进行镜像处理
-                if is_front:
-                    face_uvs.append([1.0 - uv[0], uv[1]])  # 前面镜像
-                else:
-                    face_uvs.append([uv[0], uv[1]])  # 后面保持原样
-                
-                normals.append(normal)
-                vertex_map[i] = current_idx
-                current_idx += 1
-        
-        # 生成三角形索引（需要重新映射）
-        for i in range(0, len(rect_indices), 3):
-            v0, v1, v2 = rect_indices[i:i+3]
-            if v0 in vertex_map and v1 in vertex_map and v2 in vertex_map:
-                if is_front:
-                    indices.extend([vertex_map[v0], vertex_map[v1], vertex_map[v2]])
-                else:
-                    # 后面需要翻转三角形顺序
-                    indices.extend([vertex_map[v0], vertex_map[v2], vertex_map[v1]])
-        
-        return vertices, face_uvs, normals, indices
+    return all_vertices, all_uvs, all_normals, all_indices
+
+def create_hole_mesh(width, height, thickness):
+    """创建孔洞内壁网格（简化版）"""
+    hole_width = Config.HOLE_WIDTH_MM / 1000
+    hole_height = Config.HOLE_HEIGHT_MM / 1000
+    hole_y_offset = height - (Config.HOLE_TOP_DISTANCE_CM / 100)
+    center_y = hole_y_offset - height/2
+    half_hw, half_hh, half_t = hole_width/2, hole_height/2, thickness/2
     
-    # 前后面（带孔洞的圆角面）
-    front_face = create_rounded_face_with_hole(half_t, [0, 0, 1], hole_bounds, True)
-    back_face = create_rounded_face_with_hole(-half_t, [0, 0, -1], hole_bounds, False)
-    faces.extend([front_face, back_face])
-    
-    # 生成圆角侧面
-    def create_rounded_side_faces():
-        """创建圆角立方体的侧面"""
-        side_faces = []
-        
-        # 使用侧面细分参数生成轮廓
-        outline_subdivisions = max(32, SIDE_SUBDIVISIONS * 16)  # 侧面轮廓细分数
-        
-        # 生成圆角矩形轮廓
-        half_w, half_h = width/2, height/2
-        corner_x = half_w - corner_radius
-        corner_y = half_h - corner_radius
-        
-        # 初始化轮廓顶点列表
-        outline_vertices = []
-        
-        # 四个圆角的轮廓点
-        corners = [
-            (corner_x, corner_y, 0, np.pi/2),      # 右上角
-            (-corner_x, corner_y, np.pi/2, np.pi), # 左上角
-            (-corner_x, -corner_y, np.pi, 3*np.pi/2), # 左下角
-            (corner_x, -corner_y, 3*np.pi/2, 2*np.pi)  # 右下角
-        ]
-        
-        for center_x, center_y, start_angle, end_angle in corners:
-            for i in range(outline_subdivisions // 4 + 1):
-                angle = start_angle + i * (end_angle - start_angle) / (outline_subdivisions // 4)
-                x = center_x + corner_radius * np.cos(angle)
-                y = center_y + corner_radius * np.sin(angle)
-                outline_vertices.append([x, y])
-        
-        # 为每条边创建侧面
-        num_vertices = len(outline_vertices)
-        for i in range(num_vertices):
-            next_i = (i + 1) % num_vertices
-            
-            # 当前边的四个顶点
-            x1, y1 = outline_vertices[i]
-            x2, y2 = outline_vertices[next_i]
-            
-            # 创建侧面四边形
-            corners = [
-                [x1, y1, half_t],   # 前面点1
-                [x2, y2, half_t],   # 前面点2
-                [x2, y2, -half_t],  # 后面点2
-                [x1, y1, -half_t]   # 后面点1
-            ]
-            
-            # 计算法向量
-            edge_vec = np.array([x2 - x1, y2 - y1, 0])
-            up_vec = np.array([0, 0, 1])
-            normal = np.cross(edge_vec, up_vec)
-            if np.linalg.norm(normal) > 0:
-                normal = normal / np.linalg.norm(normal)
-            else:
-                normal = [0, 0, 1]
-            
-            # 简化UV坐标
-            uvs = [[0, 0], [1, 0], [1, 1], [0, 1]]
-            
-            face_data = create_face_mesh([np.array(v) for v in corners], uvs, normal, 1)
-            side_faces.append(face_data)
-        
-        return side_faces
-    
-    # 添加圆角侧面
-    rounded_sides = create_rounded_side_faces()
-    faces.extend(rounded_sides)
-    
-    # 孔洞内壁面
-    center_y = hole_y_offset - FIXED_HEIGHT_CM / 200
-    half_hw, half_hh = hole_width/2, hole_height/2
-    
-    hole_walls = [
-        # 上壁
+    # 四个内壁
+    walls = [
+        # 上壁、下壁、左壁、右壁
         ([[-half_hw, center_y + half_hh, half_t], [half_hw, center_y + half_hh, half_t],
           [half_hw, center_y + half_hh, -half_t], [-half_hw, center_y + half_hh, -half_t]], [0, -1, 0]),
-        # 下壁
         ([[half_hw, center_y - half_hh, half_t], [-half_hw, center_y - half_hh, half_t],
           [-half_hw, center_y - half_hh, -half_t], [half_hw, center_y - half_hh, -half_t]], [0, 1, 0]),
-        # 左壁
         ([[-half_hw, center_y - half_hh, half_t], [-half_hw, center_y + half_hh, half_t],
           [-half_hw, center_y + half_hh, -half_t], [-half_hw, center_y - half_hh, -half_t]], [1, 0, 0]),
-        # 右壁
         ([[half_hw, center_y + half_hh, half_t], [half_hw, center_y - half_hh, half_t],
           [half_hw, center_y - half_hh, -half_t], [half_hw, center_y + half_hh, -half_t]], [-1, 0, 0])
     ]
     
-    for corners, normal in hole_walls:
-        uvs = [[0, 0], [1, 0], [1, 1], [0, 1]]
-        faces.append(create_hole_wall(corners, uvs, normal))
-    
-    # 合并所有面的数据
     all_vertices, all_uvs, all_normals, all_indices = [], [], [], []
-    for vertices, face_uvs, normals, indices in faces:
+    
+    for corners, normal in walls:
+        uvs = [[0, 0], [1, 0], [1, 1], [0, 1]]
+        base_idx = len(all_vertices)
+        all_vertices.extend(corners)
+        all_uvs.extend(uvs)
+        all_normals.extend([normal] * 4)
+        all_indices.extend([base_idx, base_idx + 1, base_idx + 2, 
+                           base_idx, base_idx + 2, base_idx + 3])
+    
+    return all_vertices, all_uvs, all_normals, all_indices
+
+def create_cube_geometry(width, height, thickness, uv_mapping_size=None):
+    """创建立方体几何体（简化版）"""
+    print(f"🕳️ 一字孔设置: {Config.HOLE_WIDTH_MM:.1f}x{Config.HOLE_HEIGHT_MM:.1f}mm, 距顶部{Config.HOLE_TOP_DISTANCE_CM:.1f}cm")
+    print(f"📐 圆角半径: {Config.CORNER_RADIUS_CM:.1f}cm")
+    
+    # 孔洞边界
+    hole_width = Config.HOLE_WIDTH_MM / 1000
+    hole_height = Config.HOLE_HEIGHT_MM / 1000
+    hole_y_offset = height - (Config.HOLE_TOP_DISTANCE_CM / 100)
+    center_y = hole_y_offset - height/2
+    hole_bounds = (-hole_width/2, hole_width/2, center_y - hole_height/2, center_y + hole_height/2)
+    
+    # 创建所有面
+    all_vertices, all_uvs, all_normals, all_indices = [], [], [], []
+    
+    # 前后面
+    for is_front in [True, False]:
+        vertices, uvs, normals, indices = create_face_mesh(width, height, thickness, hole_bounds, uv_mapping_size, is_front)
         base_idx = len(all_vertices)
         all_vertices.extend(vertices)
-        all_uvs.extend(face_uvs)
+        all_uvs.extend(uvs)
         all_normals.extend(normals)
         all_indices.extend([idx + base_idx for idx in indices])
+    
+    # 侧面
+    vertices, uvs, normals, indices = create_side_mesh(width, height, thickness)
+    base_idx = len(all_vertices)
+    all_vertices.extend(vertices)
+    all_uvs.extend(uvs)
+    all_normals.extend(normals)
+    all_indices.extend([idx + base_idx for idx in indices])
+    
+    # 孔洞内壁
+    vertices, uvs, normals, indices = create_hole_mesh(width, height, thickness)
+    base_idx = len(all_vertices)
+    all_vertices.extend(vertices)
+    all_uvs.extend(uvs)
+    all_normals.extend(normals)
+    all_indices.extend([idx + base_idx for idx in indices])
     
     return (np.array(all_vertices, dtype=np.float32), 
             np.array(all_uvs, dtype=np.float32),
@@ -429,12 +294,12 @@ def create_cube_geometry(width, height, thickness, uv_mapping_size=None):
             np.array(all_indices, dtype=np.uint32))
 
 def create_glb_model(vertices, uvs, normals, indices, texture_img, output_path):
-    """创建并保存GLB文件"""
-    # 准备几何数据
+    """创建并保存GLB文件（简化版）"""
+    # 准备数据
     index_type = np.uint16 if len(vertices) < 65536 else np.uint32
     geo_data = [vertices.tobytes(), uvs.tobytes(), normals.tobytes(), indices.astype(index_type).tobytes()]
     
-    # 处理纹理数据
+    # 处理纹理
     if texture_img:
         img_bytes = io.BytesIO()
         texture_img.save(img_bytes, format='PNG')
@@ -446,12 +311,12 @@ def create_glb_model(vertices, uvs, normals, indices, texture_img, output_path):
         all_data = b''.join(geo_data)
         geo_offset = 0
     
-    # 创建GLTF对象
+    # 创建GLTF
     gltf = GLTF2()
     gltf.buffers = [Buffer(byteLength=len(all_data),
                           uri=f"data:application/octet-stream;base64,{base64.b64encode(all_data).decode()}")]
     
-    # 创建缓冲区视图
+    # 缓冲区视图
     buffer_views = []
     if texture_img:
         buffer_views.append(BufferView(buffer=0, byteOffset=0, byteLength=len(img_data)))
@@ -464,7 +329,7 @@ def create_glb_model(vertices, uvs, normals, indices, texture_img, output_path):
     
     gltf.bufferViews = buffer_views
     
-    # 创建访问器
+    # 访问器
     bv_offset = 1 if texture_img else 0
     component_type = UNSIGNED_SHORT if len(vertices) < 65536 else UNSIGNED_INT
     
@@ -476,7 +341,7 @@ def create_glb_model(vertices, uvs, normals, indices, texture_img, output_path):
         Accessor(bufferView=bv_offset+3, componentType=component_type, count=len(indices), type="SCALAR")
     ]
     
-    # 创建材质
+    # 材质
     if texture_img:
         gltf.images = [Image(mimeType="image/png", bufferView=0)]
         gltf.samplers = [Sampler(magFilter=9729, minFilter=9729, wrapS=10497, wrapT=10497)]
@@ -487,14 +352,14 @@ def create_glb_model(vertices, uvs, normals, indices, texture_img, output_path):
     
     gltf.materials = [Material(name="BadgeMaterial", pbrMetallicRoughness=pbr)]
     
-    # 创建网格和场景
+    # 网格和场景
     primitive = Primitive(attributes=Attributes(POSITION=0, TEXCOORD_0=1, NORMAL=2), indices=3, material=0)
     gltf.meshes = [Mesh(name="BadgeMesh", primitives=[primitive])]
     gltf.nodes = [Node(name="BadgeNode", mesh=0)]
     gltf.scenes = [Scene(name="BadgeScene", nodes=[0])]
     gltf.scene = 0
     
-    # 保存文件
+    # 保存
     try:
         gltf.save(output_path)
         file_size = os.path.getsize(output_path)
@@ -505,14 +370,14 @@ def create_glb_model(vertices, uvs, normals, indices, texture_img, output_path):
         return False
 
 def convert_glb_to_obj(glb_path, obj_path):
-    """转换GLB到OBJ格式"""
+    """转换GLB到OBJ格式（简化版）"""
     try:
         print("🔄 转换GLB到OBJ...")
         scene = trimesh.load(glb_path, file_type='glb')
         mesh = (trimesh.util.concatenate([g for g in scene.geometry.values()]) 
                 if isinstance(scene, trimesh.Scene) else scene)
         
-        # 尝试提取纹理颜色
+        # 简化纹理处理
         if (hasattr(mesh.visual, 'uv') and mesh.visual.uv is not None and
             hasattr(mesh.visual, 'material') and mesh.visual.material and 
             hasattr(mesh.visual.material, 'baseColorTexture') and 
@@ -527,39 +392,12 @@ def convert_glb_to_obj(glb_path, obj_path):
             colors = texture_array[v_coords, u_coords, :3]
             
             mesh = trimesh.Trimesh(vertices=mesh.vertices, faces=mesh.faces, vertex_colors=colors)
-            mesh.export(obj_path, file_type='obj', include_color=True, include_normals=False, include_texture=False)
+            mesh.export(obj_path, file_type='obj', include_color=True)
             print(f"✅ 带纹理颜色的OBJ导出成功: {os.path.basename(obj_path)}")
-            return True
+        else:
+            mesh.export(obj_path, file_type='obj')
+            print(f"✅ OBJ导出成功: {os.path.basename(obj_path)}")
         
-        # 处理其他颜色类型
-        export_kwargs = {'file_type': 'obj', 'include_color': True, 'include_normals': False, 'include_texture': False}
-        
-        if hasattr(mesh.visual, 'kind'):
-            if mesh.visual.kind == 'vertex' and mesh.visual.vertex_colors is not None:
-                mesh.export(obj_path, **export_kwargs)
-                print(f"✅ 顶点颜色OBJ导出成功: {os.path.basename(obj_path)}")
-                return True
-            elif mesh.visual.kind == 'face' and mesh.visual.face_colors is not None:
-                # 面颜色转顶点颜色
-                face_colors = mesh.visual.face_colors
-                vertex_colors = np.zeros((len(mesh.vertices), 3))
-                vertex_counts = np.zeros(len(mesh.vertices))
-                
-                for i, face in enumerate(mesh.faces):
-                    vertex_colors[face] += face_colors[i, :3]
-                    vertex_counts[face] += 1
-                
-                vertex_counts[vertex_counts == 0] = 1
-                vertex_colors = (vertex_colors / vertex_counts[:, np.newaxis]).astype(np.uint8)
-                
-                colored_mesh = trimesh.Trimesh(vertices=mesh.vertices, faces=mesh.faces, vertex_colors=vertex_colors)
-                colored_mesh.export(obj_path, **export_kwargs)
-                print(f"✅ 面颜色转换OBJ导出成功: {os.path.basename(obj_path)}")
-                return True
-        
-        # 无颜色导出
-        mesh.export(obj_path, file_type='obj')
-        print(f"✅ 无颜色OBJ导出成功: {os.path.basename(obj_path)}")
         return True
         
     except Exception as e:
@@ -568,16 +406,16 @@ def convert_glb_to_obj(glb_path, obj_path):
 
 def main():
     """主函数"""
-    print("🔲 固定尺寸立方体GLB工牌生成器 - 动态UV映射版")
+    print("🔲 固定尺寸立方体GLB工牌生成器 - 简化版")
     print("=" * 50)
     print("📐 固定尺寸: 6.0x9.0x0.2 cm - 图片保持比例不变形")
-    print(f"🎨 UV映射最大区域: {UV_MAPPING_MAX_WIDTH_CM:.1f}x{UV_MAPPING_MAX_HEIGHT_CM:.1f} cm")
+    print(f"🎨 UV映射最大区域: {Config.UV_MAPPING_MAX_WIDTH_CM:.1f}x{Config.UV_MAPPING_MAX_HEIGHT_CM:.1f} cm")
     
     # 创建输出目录
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(Config.OUTPUT_DIR, exist_ok=True)
     
     # 处理纹理
-    texture_path = os.path.join(os.getcwd(), TEXTURE_FILE)
+    texture_path = os.path.join(os.getcwd(), Config.TEXTURE_FILE)
     if not os.path.exists(texture_path):
         print("❌ 未找到图像文件")
         return
@@ -591,8 +429,8 @@ def main():
     
     # 生成文件路径
     base_name = os.path.splitext(os.path.basename(texture_path))[0]
-    glb_path = os.path.join(OUTPUT_DIR, f"工牌_{base_name}.glb")
-    obj_path = os.path.join(OUTPUT_DIR, f"工牌_{base_name}.obj")
+    glb_path = os.path.join(Config.OUTPUT_DIR, f"工牌_{base_name}.glb")
+    obj_path = os.path.join(Config.OUTPUT_DIR, f"工牌_{base_name}.obj")
     
     # 创建几何体
     print("🔧 创建几何数据...")
