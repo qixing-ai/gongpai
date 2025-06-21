@@ -33,8 +33,45 @@ class Config:
     HOLE_WIDTH_MM = 20.0
     HOLE_HEIGHT_MM = 2.0
     HOLE_TOP_DISTANCE_CM = 8.7
+    HOLE_CORNER_RADIUS_MM = 0.6  # 孔洞倒角半径
     
     CORNER_RADIUS_CM = 0.4
+
+def is_point_in_rounded_hole(x, y, hole_center_x, hole_center_y, hole_width, hole_height, corner_radius):
+    """检查点是否在带倒角的矩形孔洞内"""
+    # 计算相对于孔洞中心的坐标
+    rel_x = x - hole_center_x
+    rel_y = y - hole_center_y
+    
+    # 孔洞的半宽和半高
+    half_width = hole_width / 2
+    half_height = hole_height / 2
+    
+    # 如果点在孔洞的主要矩形区域内
+    if abs(rel_x) <= half_width - corner_radius or abs(rel_y) <= half_height - corner_radius:
+        if abs(rel_x) <= half_width and abs(rel_y) <= half_height:
+            return True
+    
+    # 检查四个圆角区域
+    corner_centers = [
+        (half_width - corner_radius, half_height - corner_radius),    # 右上
+        (-half_width + corner_radius, half_height - corner_radius),   # 左上
+        (-half_width + corner_radius, -half_height + corner_radius),  # 左下
+        (half_width - corner_radius, -half_height + corner_radius)    # 右下
+    ]
+    
+    for corner_x, corner_y in corner_centers:
+        # 检查点是否在这个圆角的影响范围内
+        if (abs(rel_x) > half_width - corner_radius and abs(rel_y) > half_height - corner_radius and
+            np.sign(rel_x) == np.sign(corner_x) and np.sign(rel_y) == np.sign(corner_y)):
+            # 计算到圆角中心的距离
+            dx = rel_x - corner_x
+            dy = rel_y - corner_y
+            dist = np.sqrt(dx*dx + dy*dy)
+            if dist <= corner_radius:
+                return True
+    
+    return False
 
 def load_and_process_texture(img_path):
     """加载并处理纹理图像"""
@@ -137,9 +174,15 @@ def create_face_mesh(width, height, thickness, hole_bounds, uv_info, is_front=Tr
                     x = center_x + (dx / dist) * corner_radius
                     y = center_y + (dy / dist) * corner_radius
             
-            # 检查孔洞
-            left, right, bottom, top = hole_bounds
-            if left <= x <= right and bottom <= y <= top:
+            # 检查带倒角的孔洞
+            hole_width = Config.HOLE_WIDTH_MM / 1000
+            hole_height = Config.HOLE_HEIGHT_MM / 1000
+            hole_corner_radius = Config.HOLE_CORNER_RADIUS_MM / 1000
+            hole_y_offset = height - (Config.HOLE_TOP_DISTANCE_CM / 100)
+            hole_center_y = hole_y_offset - height/2
+            hole_center_x = 0  # 孔洞在中心
+            
+            if is_point_in_rounded_hole(x, y, hole_center_x, hole_center_y, hole_width, hole_height, hole_corner_radius):
                 continue
                 
             vertices.append([x, y, z_pos])
@@ -228,34 +271,90 @@ def create_side_mesh(width, height, thickness):
     return all_vertices, all_uvs, all_normals, all_indices
 
 def create_hole_mesh(width, height, thickness):
-    """创建孔洞内壁网格"""
+    """创建带倒角的孔洞内壁网格"""
     hole_width = Config.HOLE_WIDTH_MM / 1000
     hole_height = Config.HOLE_HEIGHT_MM / 1000
+    hole_corner_radius = Config.HOLE_CORNER_RADIUS_MM / 1000
     hole_y_offset = height - (Config.HOLE_TOP_DISTANCE_CM / 100)
     center_y = hole_y_offset - height/2
+    center_x = 0  # 孔洞在中心
     half_hw, half_hh, half_t = hole_width/2, hole_height/2, thickness/2
-    
-    walls = [
-        ([[-half_hw, center_y + half_hh, half_t], [half_hw, center_y + half_hh, half_t],
-          [half_hw, center_y + half_hh, -half_t], [-half_hw, center_y + half_hh, -half_t]], [0, -1, 0]),
-        ([[half_hw, center_y - half_hh, half_t], [-half_hw, center_y - half_hh, half_t],
-          [-half_hw, center_y - half_hh, -half_t], [half_hw, center_y - half_hh, -half_t]], [0, 1, 0]),
-        ([[-half_hw, center_y - half_hh, half_t], [-half_hw, center_y + half_hh, half_t],
-          [-half_hw, center_y + half_hh, -half_t], [-half_hw, center_y - half_hh, -half_t]], [1, 0, 0]),
-        ([[half_hw, center_y + half_hh, half_t], [half_hw, center_y - half_hh, half_t],
-          [half_hw, center_y - half_hh, -half_t], [half_hw, center_y + half_hh, -half_t]], [-1, 0, 0])
-    ]
     
     all_vertices, all_uvs, all_normals, all_indices = [], [], [], []
     
-    for corners, normal in walls:
-        uvs = [[0, 0], [1, 0], [1, 1], [0, 1]]
+    # 生成孔洞轮廓点（带倒角）
+    outline_points = 32  # 每个圆角的点数
+    outline_vertices = []
+    
+    # 四个圆角的中心点
+    corner_centers = [
+        (center_x + half_hw - hole_corner_radius, center_y + half_hh - hole_corner_radius),  # 右上
+        (center_x - half_hw + hole_corner_radius, center_y + half_hh - hole_corner_radius),  # 左上
+        (center_x - half_hw + hole_corner_radius, center_y - half_hh + hole_corner_radius),  # 左下
+        (center_x + half_hw - hole_corner_radius, center_y - half_hh + hole_corner_radius)   # 右下
+    ]
+    
+    # 每个圆角的角度范围
+    angle_ranges = [
+        (0, np.pi/2),           # 右上角
+        (np.pi/2, np.pi),       # 左上角
+        (np.pi, 3*np.pi/2),     # 左下角
+        (3*np.pi/2, 2*np.pi)    # 右下角
+    ]
+    
+    # 生成每个圆角的点
+    for (corner_x, corner_y), (start_angle, end_angle) in zip(corner_centers, angle_ranges):
+        for i in range(outline_points // 4 + 1):
+            angle = start_angle + i * (end_angle - start_angle) / (outline_points // 4)
+            x = corner_x + hole_corner_radius * np.cos(angle)
+            y = corner_y + hole_corner_radius * np.sin(angle)
+            outline_vertices.append([x, y])
+    
+    # 移除重复的点
+    unique_vertices = []
+    for vertex in outline_vertices:
+        is_duplicate = False
+        for existing in unique_vertices:
+            if abs(vertex[0] - existing[0]) < 1e-6 and abs(vertex[1] - existing[1]) < 1e-6:
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            unique_vertices.append(vertex)
+    
+    outline_vertices = unique_vertices
+    
+    # 为每个轮廓边创建内壁
+    for i in range(len(outline_vertices)):
+        next_i = (i + 1) % len(outline_vertices)
+        x1, y1 = outline_vertices[i]
+        x2, y2 = outline_vertices[next_i]
+        
+        # 创建四边形内壁
+        quad_vertices = [
+            [x1, y1, half_t],   # 顶部前
+            [x2, y2, half_t],   # 顶部后
+            [x2, y2, -half_t],  # 底部后
+            [x1, y1, -half_t]   # 底部前
+        ]
+        
+        quad_uvs = [[0, 0], [1, 0], [1, 1], [0, 1]]
+        
+        # 计算法向量（指向孔洞内部）
+        edge_vec = np.array([x2 - x1, y2 - y1, 0])
+        outward_normal = np.cross([0, 0, 1], edge_vec)
+        if np.linalg.norm(outward_normal) > 0:
+            outward_normal = outward_normal / np.linalg.norm(outward_normal)
+        
         base_idx = len(all_vertices)
-        all_vertices.extend(corners)
-        all_uvs.extend(uvs)
-        all_normals.extend([normal] * 4)
-        all_indices.extend([base_idx, base_idx + 1, base_idx + 2, 
-                           base_idx, base_idx + 2, base_idx + 3])
+        all_vertices.extend(quad_vertices)
+        all_uvs.extend(quad_uvs)
+        all_normals.extend([outward_normal] * 4)
+        
+        # 添加三角形索引（内表面朝内）
+        all_indices.extend([
+            base_idx, base_idx + 2, base_idx + 1,  # 第一个三角形
+            base_idx, base_idx + 3, base_idx + 2   # 第二个三角形
+        ])
     
     return all_vertices, all_uvs, all_normals, all_indices
 
