@@ -17,9 +17,10 @@ from pygltflib import (
 )
 
 class Config:
-    FIXED_WIDTH_CM = 6.0
-    FIXED_HEIGHT_CM = 9.0
-    DEFAULT_THICKNESS_CM = 0.2
+    # 直接使用米为单位的尺寸参数
+    FIXED_WIDTH = 0.06  # 6.0cm
+    FIXED_HEIGHT = 0.09  # 9.0cm
+    DEFAULT_THICKNESS = 0.002  # 0.2cm
     
     TEXTURE_SIZE = 512
     TEXTURE_FILE = "1.png"
@@ -27,15 +28,15 @@ class Config:
     
     SUBDIVISIONS = 512
     
-    UV_MAPPING_MAX_WIDTH_CM = 5.0
-    UV_MAPPING_MAX_HEIGHT_CM = 8.0
+    UV_MAPPING_MAX_WIDTH = 0.05  # 5.0cm
+    UV_MAPPING_MAX_HEIGHT = 0.08  # 8.0cm
     
-    HOLE_WIDTH_MM = 20.0
-    HOLE_HEIGHT_MM = 2.0
-    HOLE_TOP_DISTANCE_CM = 8.7
-    HOLE_CORNER_RADIUS_MM = 0.6  # 孔洞倒角半径
+    HOLE_WIDTH = 0.020  # 20.0mm
+    HOLE_HEIGHT = 0.002  # 2.0mm
+    HOLE_TOP_DISTANCE = 0.087  # 8.7cm
+    HOLE_CORNER_RADIUS = 0.0006  # 0.6mm
     
-    CORNER_RADIUS_CM = 0.4
+    CORNER_RADIUS = 0.004  # 0.4cm
 
 def is_point_in_rounded_hole(x, y, hole_center_x, hole_center_y, hole_width, hole_height, corner_radius):
     """检查点是否在带倒角的矩形孔洞内"""
@@ -86,13 +87,13 @@ def load_and_process_texture(img_path):
         
         img_ratio = w / h
         
-        badge_width = Config.FIXED_WIDTH_CM / 100
-        badge_height = Config.FIXED_HEIGHT_CM / 100
-        badge_thickness = Config.DEFAULT_THICKNESS_CM / 100
+        badge_width = Config.FIXED_WIDTH
+        badge_height = Config.FIXED_HEIGHT
+        badge_thickness = Config.DEFAULT_THICKNESS
         dimensions = (badge_width, badge_height, badge_thickness)
         
-        max_uv_width = Config.UV_MAPPING_MAX_WIDTH_CM / 100
-        max_uv_height = Config.UV_MAPPING_MAX_HEIGHT_CM / 100
+        max_uv_width = Config.UV_MAPPING_MAX_WIDTH
+        max_uv_height = Config.UV_MAPPING_MAX_HEIGHT
         
         # 根据图片比例动态计算UV映射区域
         if img_ratio > (max_uv_width / max_uv_height):
@@ -161,7 +162,7 @@ def create_face_mesh(width, height, thickness, hole_bounds, uv_info, is_front=Tr
             y = (j / subdivisions - 0.5) * height
             
             # 圆角处理
-            corner_radius = Config.CORNER_RADIUS_CM / 100
+            corner_radius = Config.CORNER_RADIUS
             corner_x = half_w - corner_radius
             corner_y = half_h - corner_radius
             
@@ -175,10 +176,10 @@ def create_face_mesh(width, height, thickness, hole_bounds, uv_info, is_front=Tr
                     y = center_y + (dy / dist) * corner_radius
             
             # 检查带倒角的孔洞
-            hole_width = Config.HOLE_WIDTH_MM / 1000
-            hole_height = Config.HOLE_HEIGHT_MM / 1000
-            hole_corner_radius = Config.HOLE_CORNER_RADIUS_MM / 1000
-            hole_y_offset = height - (Config.HOLE_TOP_DISTANCE_CM / 100)
+            hole_width = Config.HOLE_WIDTH
+            hole_height = Config.HOLE_HEIGHT
+            hole_corner_radius = Config.HOLE_CORNER_RADIUS
+            hole_y_offset = height - (Config.HOLE_TOP_DISTANCE)
             hole_center_y = hole_y_offset - height/2
             hole_center_x = 0  # 孔洞在中心
             
@@ -228,7 +229,7 @@ def create_face_mesh(width, height, thickness, hole_bounds, uv_info, is_front=Tr
 def create_side_mesh(width, height, thickness):
     """创建侧面网格"""
     half_w, half_h, half_t = width/2, height/2, thickness/2
-    corner_radius = Config.CORNER_RADIUS_CM / 100
+    corner_radius = Config.CORNER_RADIUS
     
     outline_points = 32
     corner_x = half_w - corner_radius
@@ -272,10 +273,10 @@ def create_side_mesh(width, height, thickness):
 
 def create_hole_mesh(width, height, thickness):
     """创建带倒角的孔洞内壁网格"""
-    hole_width = Config.HOLE_WIDTH_MM / 1000
-    hole_height = Config.HOLE_HEIGHT_MM / 1000
-    hole_corner_radius = Config.HOLE_CORNER_RADIUS_MM / 1000
-    hole_y_offset = height - (Config.HOLE_TOP_DISTANCE_CM / 100)
+    hole_width = Config.HOLE_WIDTH
+    hole_height = Config.HOLE_HEIGHT
+    hole_corner_radius = Config.HOLE_CORNER_RADIUS
+    hole_y_offset = height - (Config.HOLE_TOP_DISTANCE)
     center_y = hole_y_offset - height/2
     center_x = 0  # 孔洞在中心
     half_hw, half_hh, half_t = hole_width/2, hole_height/2, thickness/2
@@ -360,9 +361,9 @@ def create_hole_mesh(width, height, thickness):
 
 def create_cube_geometry(width, height, thickness, uv_info=None):
     """创建立方体几何体"""
-    hole_width = Config.HOLE_WIDTH_MM / 1000
-    hole_height = Config.HOLE_HEIGHT_MM / 1000
-    hole_y_offset = height - (Config.HOLE_TOP_DISTANCE_CM / 100)
+    hole_width = Config.HOLE_WIDTH
+    hole_height = Config.HOLE_HEIGHT
+    hole_y_offset = height - (Config.HOLE_TOP_DISTANCE)
     center_y = hole_y_offset - height/2
     hole_bounds = (-hole_width/2, hole_width/2, center_y - hole_height/2, center_y + hole_height/2)
     
