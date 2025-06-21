@@ -37,6 +37,7 @@ class Config:
     HOLE_CORNER_RADIUS = 0.0006  # 0.6mm
     
     CORNER_RADIUS = 0.004  # 0.4cm
+    EDGE_RADIUS = 0.001  # 0.1cm - 边缘倒角半径
 
 def is_point_in_rounded_hole(x, y, hole_center_x, hole_center_y, hole_width, hole_height, corner_radius):
     """检查点是否在带倒角的矩形孔洞内"""
@@ -140,7 +141,7 @@ def load_and_process_texture(img_path):
         return None, None, None
 
 def create_face_mesh(width, height, thickness, hole_bounds, uv_info, is_front=True):
-    """创建面网格"""
+    """创建带边缘倒角的面网格"""
     half_w, half_h, half_t = width/2, height/2, thickness/2
     z_pos = half_t if is_front else -half_t
     normal = [0, 0, 1] if is_front else [0, 0, -1]
@@ -155,14 +156,44 @@ def create_face_mesh(width, height, thickness, hole_bounds, uv_info, is_front=Tr
     
     uv_offset_x = (width - uv_width) / 2
     uv_offset_y = (height - uv_height) / 2
+    
+    corner_radius = Config.CORNER_RADIUS
+    edge_radius = Config.EDGE_RADIUS
+    
     subdivisions = Config.SUBDIVISIONS
     for i in range(subdivisions + 1):
         for j in range(subdivisions + 1):
             x = (i / subdivisions - 0.5) * width
             y = (j / subdivisions - 0.5) * height
+            z = z_pos
             
-            # 圆角处理
-            corner_radius = Config.CORNER_RADIUS
+            # 计算到边缘的距离
+            dist_to_left = x + half_w
+            dist_to_right = half_w - x
+            dist_to_bottom = y + half_h
+            dist_to_top = half_h - y
+            
+            # 找到最近的边缘距离
+            min_edge_dist = min(dist_to_left, dist_to_right, dist_to_bottom, dist_to_top)
+            
+            # 边缘倒角处理
+            if min_edge_dist < edge_radius:
+                # 计算倒角后的Z坐标
+                edge_factor = min_edge_dist / edge_radius
+                if edge_factor < 0:
+                    edge_factor = 0
+                
+                # 使用平滑的倒角曲线
+                curve_factor = np.sqrt(1 - (1 - edge_factor) ** 2)  # 圆弧倒角
+                z_offset = edge_radius * (1 - curve_factor)
+                
+                # 根据是否是正面调整Z坐标
+                if is_front:
+                    z = z_pos - z_offset
+                else:
+                    z = z_pos + z_offset
+            
+            # 角部倒角处理（优先级更高）
             corner_x = half_w - corner_radius
             corner_y = half_h - corner_radius
             
@@ -174,6 +205,18 @@ def create_face_mesh(width, height, thickness, hole_bounds, uv_info, is_front=Tr
                 if dist > corner_radius:
                     x = center_x + (dx / dist) * corner_radius
                     y = center_y + (dy / dist) * corner_radius
+                    
+                    # 角部也应用边缘倒角
+                    if min_edge_dist < edge_radius:
+                        edge_factor = min_edge_dist / edge_radius
+                        if edge_factor < 0:
+                            edge_factor = 0
+                        curve_factor = np.sqrt(1 - (1 - edge_factor) ** 2)
+                        z_offset = edge_radius * (1 - curve_factor)
+                        if is_front:
+                            z = z_pos - z_offset
+                        else:
+                            z = z_pos + z_offset
             
             # 检查带倒角的孔洞
             hole_width = Config.HOLE_WIDTH
@@ -186,8 +229,33 @@ def create_face_mesh(width, height, thickness, hole_bounds, uv_info, is_front=Tr
             if is_point_in_rounded_hole(x, y, hole_center_x, hole_center_y, hole_width, hole_height, hole_corner_radius):
                 continue
                 
-            vertices.append([x, y, z_pos])
-            normals.append(normal)
+            vertices.append([x, y, z])
+            
+            # 计算法向量（考虑边缘倾斜）
+            if min_edge_dist < edge_radius:
+                # 边缘区域的法向量需要调整
+                edge_normal_factor = min_edge_dist / edge_radius
+                if edge_normal_factor < 0:
+                    edge_normal_factor = 0
+                
+                # 根据最近的边确定倾斜方向
+                if dist_to_left == min_edge_dist:  # 左边
+                    edge_normal = [-1, 0, 0]
+                elif dist_to_right == min_edge_dist:  # 右边
+                    edge_normal = [1, 0, 0]
+                elif dist_to_bottom == min_edge_dist:  # 下边
+                    edge_normal = [0, -1, 0]
+                else:  # 上边
+                    edge_normal = [0, 1, 0]
+                
+                # 混合面法向量和边法向量
+                face_normal = np.array(normal)
+                edge_normal = np.array(edge_normal)
+                mixed_normal = face_normal * edge_normal_factor + edge_normal * (1 - edge_normal_factor)
+                mixed_normal = mixed_normal / np.linalg.norm(mixed_normal)
+                normals.append(mixed_normal.tolist())
+            else:
+                normals.append(normal)
             
             # 计算UV坐标
             x_in_uv_region = x + width/2 - uv_offset_x
@@ -227,17 +295,25 @@ def create_face_mesh(width, height, thickness, hole_bounds, uv_info, is_front=Tr
     return vertices, uvs, normals, indices
 
 def create_side_mesh(width, height, thickness):
-    """创建侧面网格"""
+    """创建与边缘倒角匹配的侧面网格"""
     half_w, half_h, half_t = width/2, height/2, thickness/2
     corner_radius = Config.CORNER_RADIUS
+    edge_radius = Config.EDGE_RADIUS
     
-    outline_points = 32
+    # 生成轮廓点时考虑边缘倒角
+    outline_points = 64  # 增加点数以获得更平滑的效果
     corner_x = half_w - corner_radius
     corner_y = half_h - corner_radius
     
     outline_vertices = []
-    corners = [(corner_x, corner_y, 0, np.pi/2), (-corner_x, corner_y, np.pi/2, np.pi),
-               (-corner_x, -corner_y, np.pi, 3*np.pi/2), (corner_x, -corner_y, 3*np.pi/2, 2*np.pi)]
+    
+    # 四个角的圆弧
+    corners = [
+        (corner_x, corner_y, 0, np.pi/2),           # 右上
+        (-corner_x, corner_y, np.pi/2, np.pi),      # 左上
+        (-corner_x, -corner_y, np.pi, 3*np.pi/2),   # 左下
+        (corner_x, -corner_y, 3*np.pi/2, 2*np.pi)   # 右下
+    ]
     
     for center_x, center_y, start_angle, end_angle in corners:
         for i in range(outline_points // 4 + 1):
@@ -246,7 +322,7 @@ def create_side_mesh(width, height, thickness):
             y = center_y + corner_radius * np.sin(angle)
             outline_vertices.append([x, y])
     
-    # 创建侧面
+    # 创建侧面网格
     all_vertices, all_uvs, all_normals, all_indices = [], [], [], []
     
     for i in range(len(outline_vertices)):
@@ -254,9 +330,49 @@ def create_side_mesh(width, height, thickness):
         x1, y1 = outline_vertices[i]
         x2, y2 = outline_vertices[next_i]
         
-        quad_vertices = [[x1, y1, half_t], [x2, y2, half_t], [x2, y2, -half_t], [x1, y1, -half_t]]
+        # 计算这两个点到边缘的距离
+        def get_edge_distance(x, y):
+            dist_to_left = x + half_w
+            dist_to_right = half_w - x
+            dist_to_bottom = y + half_h
+            dist_to_top = half_h - y
+            return min(dist_to_left, dist_to_right, dist_to_bottom, dist_to_top)
+        
+        # 计算边缘倒角后的Z坐标
+        def get_edge_z(x, y, is_front):
+            min_edge_dist = get_edge_distance(x, y)
+            base_z = half_t if is_front else -half_t
+            
+            if min_edge_dist < edge_radius:
+                edge_factor = min_edge_dist / edge_radius
+                if edge_factor < 0:
+                    edge_factor = 0
+                curve_factor = np.sqrt(1 - (1 - edge_factor) ** 2)
+                z_offset = edge_radius * (1 - curve_factor)
+                
+                if is_front:
+                    return base_z - z_offset
+                else:
+                    return base_z + z_offset
+            return base_z
+        
+        # 计算四个顶点的Z坐标
+        z1_front = get_edge_z(x1, y1, True)
+        z2_front = get_edge_z(x2, y2, True)
+        z1_back = get_edge_z(x1, y1, False)
+        z2_back = get_edge_z(x2, y2, False)
+        
+        # 创建四边形
+        quad_vertices = [
+            [x1, y1, z1_front],  # 前面点1
+            [x2, y2, z2_front],  # 前面点2
+            [x2, y2, z2_back],   # 后面点2
+            [x1, y1, z1_back]    # 后面点1
+        ]
+        
         quad_uvs = [[0, 0], [1, 0], [1, 1], [0, 1]]
         
+        # 计算法向量
         edge_vec = np.array([x2 - x1, y2 - y1, 0])
         normal = np.cross(edge_vec, [0, 0, 1])
         if np.linalg.norm(normal) > 0:
@@ -272,14 +388,16 @@ def create_side_mesh(width, height, thickness):
     return all_vertices, all_uvs, all_normals, all_indices
 
 def create_hole_mesh(width, height, thickness):
-    """创建带倒角的孔洞内壁网格"""
+    """创建带倒角的孔洞内壁网格，考虑边缘倒角"""
     hole_width = Config.HOLE_WIDTH
     hole_height = Config.HOLE_HEIGHT
     hole_corner_radius = Config.HOLE_CORNER_RADIUS
+    edge_radius = Config.EDGE_RADIUS
     hole_y_offset = height - (Config.HOLE_TOP_DISTANCE)
     center_y = hole_y_offset - height/2
     center_x = 0  # 孔洞在中心
     half_hw, half_hh, half_t = hole_width/2, hole_height/2, thickness/2
+    half_w, half_h = width/2, height/2
     
     all_vertices, all_uvs, all_normals, all_indices = [], [], [], []
     
@@ -324,18 +442,47 @@ def create_hole_mesh(width, height, thickness):
     
     outline_vertices = unique_vertices
     
+    # 计算边缘倒角后的Z坐标的辅助函数
+    def get_edge_z(x, y, is_front):
+        dist_to_left = x + half_w
+        dist_to_right = half_w - x
+        dist_to_bottom = y + half_h
+        dist_to_top = half_h - y
+        min_edge_dist = min(dist_to_left, dist_to_right, dist_to_bottom, dist_to_top)
+        
+        base_z = half_t if is_front else -half_t
+        
+        if min_edge_dist < edge_radius:
+            edge_factor = min_edge_dist / edge_radius
+            if edge_factor < 0:
+                edge_factor = 0
+            curve_factor = np.sqrt(1 - (1 - edge_factor) ** 2)
+            z_offset = edge_radius * (1 - curve_factor)
+            
+            if is_front:
+                return base_z - z_offset
+            else:
+                return base_z + z_offset
+        return base_z
+    
     # 为每个轮廓边创建内壁
     for i in range(len(outline_vertices)):
         next_i = (i + 1) % len(outline_vertices)
         x1, y1 = outline_vertices[i]
         x2, y2 = outline_vertices[next_i]
         
+        # 计算考虑边缘倒角的Z坐标
+        z1_front = get_edge_z(x1, y1, True)
+        z2_front = get_edge_z(x2, y2, True)
+        z1_back = get_edge_z(x1, y1, False)
+        z2_back = get_edge_z(x2, y2, False)
+        
         # 创建四边形内壁
         quad_vertices = [
-            [x1, y1, half_t],   # 顶部前
-            [x2, y2, half_t],   # 顶部后
-            [x2, y2, -half_t],  # 底部后
-            [x1, y1, -half_t]   # 底部前
+            [x1, y1, z1_front],  # 顶部前
+            [x2, y2, z2_front],  # 顶部后
+            [x2, y2, z2_back],   # 底部后
+            [x1, y1, z1_back]    # 底部前
         ]
         
         quad_uvs = [[0, 0], [1, 0], [1, 1], [0, 1]]
