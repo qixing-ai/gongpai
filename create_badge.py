@@ -54,45 +54,81 @@ def load_and_process_texture(img_path):
         w, h = img.size
         print(f"📸 图片: {os.path.basename(img_path)} ({w}x{h})")
         
-        # 计算UV映射尺寸
-        max_width = Config.UV_MAPPING_MAX_WIDTH_CM / 100
-        max_height = Config.UV_MAPPING_MAX_HEIGHT_CM / 100
+        # 图片原始比例
         img_ratio = w / h
-        max_ratio = Config.UV_MAPPING_MAX_WIDTH_CM / Config.UV_MAPPING_MAX_HEIGHT_CM
+        print(f"📐 图片比例: {img_ratio:.2f} (宽:高)")
         
-        if img_ratio > max_ratio:
-            uv_width, uv_height = max_width, max_width / img_ratio
+        # 工牌尺寸（米）
+        badge_width = Config.FIXED_WIDTH_CM / 100
+        badge_height = Config.FIXED_HEIGHT_CM / 100
+        badge_thickness = Config.DEFAULT_THICKNESS_CM / 100
+        dimensions = (badge_width, badge_height, badge_thickness)
+        
+        # 计算最大可用UV映射区域（米）
+        max_uv_width = Config.UV_MAPPING_MAX_WIDTH_CM / 100
+        max_uv_height = Config.UV_MAPPING_MAX_HEIGHT_CM / 100
+        
+        # 根据图片比例动态计算UV映射区域，保持图片不变形
+        # 在最大区域内按图片比例缩放
+        if img_ratio > (max_uv_width / max_uv_height):
+            # 图片较宽，以宽度为准
+            uv_width = max_uv_width
+            uv_height = max_uv_width / img_ratio
         else:
-            uv_width, uv_height = max_height * img_ratio, max_height
-            
-        print(f"🎨 UV映射区域: {uv_width*100:.1f}x{uv_height*100:.1f} cm")
+            # 图片较高，以高度为准
+            uv_height = max_uv_height
+            uv_width = max_uv_height * img_ratio
         
-        # 工牌尺寸
-        dimensions = (Config.FIXED_WIDTH_CM / 100, Config.FIXED_HEIGHT_CM / 100, Config.DEFAULT_THICKNESS_CM / 100)
+        # 确保UV区域不超出工牌边界
+        uv_width = min(uv_width, badge_width * 0.9)  # 留10%边距
+        uv_height = min(uv_height, badge_height * 0.9)  # 留10%边距
         
-        # 调整图片适应工牌比例
-        badge_ratio = Config.FIXED_WIDTH_CM / Config.FIXED_HEIGHT_CM
+        print(f"🎨 UV映射区域: {uv_width*100:.1f}x{uv_height*100:.1f} cm (保持比例 {uv_width/uv_height:.2f})")
+        print(f"📏 工牌尺寸: {Config.FIXED_WIDTH_CM:.1f}x{Config.FIXED_HEIGHT_CM:.1f}x{Config.DEFAULT_THICKNESS_CM:.1f} cm")
         
-        if img_ratio > badge_ratio:
-            new_size = (w, int(w / badge_ratio))
-            offset = (0, (new_size[1] - h) // 2)
+        # 创建纹理图像 - 保持原始比例，不强制拉伸
+        # 直接调整图像到纹理尺寸，保持比例
+        texture_size = Config.TEXTURE_SIZE
+        if img_ratio > 1:
+            # 宽图
+            new_width = texture_size
+            new_height = int(texture_size / img_ratio)
         else:
-            new_size = (int(h * badge_ratio), h)
-            offset = ((new_size[0] - w) // 2, 0)
+            # 高图
+            new_height = texture_size
+            new_width = int(texture_size * img_ratio)
         
-        padded_img = PILImage.new('RGB', new_size, (255, 255, 255))
-        padded_img.paste(img, offset)
-        texture_img = padded_img.resize((Config.TEXTURE_SIZE, Config.TEXTURE_SIZE), PILImage.LANCZOS)
+        # 调整图像尺寸
+        resized_img = img.resize((new_width, new_height), PILImage.LANCZOS)
         
-        print(f"📏 固定尺寸: {Config.FIXED_WIDTH_CM:.1f}x{Config.FIXED_HEIGHT_CM:.1f}x{Config.DEFAULT_THICKNESS_CM:.1f} cm")
-        return dimensions, texture_img, (uv_width, uv_height)
+        # 创建正方形纹理，居中放置图像
+        texture_img = PILImage.new('RGB', (texture_size, texture_size), (255, 255, 255))
+        paste_x = (texture_size - new_width) // 2
+        paste_y = (texture_size - new_height) // 2
+        texture_img.paste(resized_img, (paste_x, paste_y))
+        
+        # 计算实际UV坐标范围（在正方形纹理中图像的位置）
+        uv_start_x = paste_x / texture_size
+        uv_end_x = (paste_x + new_width) / texture_size
+        uv_start_y = paste_y / texture_size
+        uv_end_y = (paste_y + new_height) / texture_size
+        
+        uv_info = {
+            'width': uv_width,
+            'height': uv_height,
+            'uv_bounds': (uv_start_x, uv_end_x, uv_start_y, uv_end_y)
+        }
+        
+        print(f"🖼️ 纹理UV范围: X({uv_start_x:.3f}-{uv_end_x:.3f}), Y({uv_start_y:.3f}-{uv_end_y:.3f})")
+        
+        return dimensions, texture_img, uv_info
         
     except Exception as e:
         print(f"❌ 处理失败: {e}")
         return None, None, None
 
-def create_face_mesh(width, height, thickness, hole_bounds, uv_mapping_size, is_front=True):
-    """创建面网格（简化版）"""
+def create_face_mesh(width, height, thickness, hole_bounds, uv_info, is_front=True):
+    """创建面网格（支持动态UV映射）"""
     half_w, half_h, half_t = width/2, height/2, thickness/2
     z_pos = half_t if is_front else -half_t
     normal = [0, 0, 1] if is_front else [0, 0, -1]
@@ -101,10 +137,16 @@ def create_face_mesh(width, height, thickness, hole_bounds, uv_mapping_size, is_
     vertex_map = {}
     current_idx = 0
     
-    # UV映射参数
-    uv_width, uv_height = uv_mapping_size
+    # 获取UV映射信息
+    uv_width = uv_info['width']
+    uv_height = uv_info['height']
+    uv_start_x, uv_end_x, uv_start_y, uv_end_y = uv_info['uv_bounds']
+    
+    # UV映射区域在工牌上的位置（居中）
     uv_offset_x = (width - uv_width) / 2
     uv_offset_y = (height - uv_height) / 2
+    
+    print(f"🎯 UV映射: 物理区域 {uv_width*100:.1f}x{uv_height*100:.1f}cm, 纹理范围 ({uv_start_x:.3f},{uv_start_y:.3f})-({uv_end_x:.3f},{uv_end_y:.3f})")
     
     # 简化网格生成
     subdivisions = Config.SUBDIVISIONS
@@ -136,16 +178,30 @@ def create_face_mesh(width, height, thickness, hole_bounds, uv_mapping_size, is_
             vertices.append([x, y, z_pos])
             normals.append(normal)
             
-            # 计算UV
-            x_in_uv = x + width/2 - uv_offset_x
-            y_in_uv = y + height/2 - uv_offset_y
-            u = max(0, min(1, x_in_uv / uv_width)) if uv_width > 0 else 0.5
-            v = max(0, min(1, y_in_uv / uv_height)) if uv_height > 0 else 0.5
+            # 计算UV坐标 - 关键改进：保持图片比例不变形
+            # 将世界坐标转换为UV映射区域内的相对坐标
+            x_in_uv_region = x + width/2 - uv_offset_x  # 相对于UV区域左边界
+            y_in_uv_region = y + height/2 - uv_offset_y  # 相对于UV区域下边界
             
-            if is_front:
-                uvs.append([1.0 - u, v])
+            # 计算在UV区域内的归一化坐标 (0-1)
+            u_in_region = x_in_uv_region / uv_width if uv_width > 0 else 0.5
+            v_in_region = y_in_uv_region / uv_height if uv_height > 0 else 0.5
+            
+            # 将区域内坐标映射到实际纹理坐标
+            if 0 <= u_in_region <= 1 and 0 <= v_in_region <= 1:
+                # 在UV映射区域内，使用实际纹理坐标
+                u = uv_start_x + u_in_region * (uv_end_x - uv_start_x)
+                v = uv_start_y + v_in_region * (uv_end_y - uv_start_y)
             else:
-                uvs.append([u, v])
+                # 在UV映射区域外，使用白色背景区域
+                u = 0.5  # 纹理中心的白色区域
+                v = 0.5
+            
+            # 前后面UV坐标处理
+            if is_front:
+                uvs.append([1.0 - u, v])  # 前面保持正常方向
+            else:
+                uvs.append([u, v])  # 后面左右翻转（镜像效果）
             
             vertex_map[i * (subdivisions + 1) + j] = current_idx
             current_idx += 1
@@ -248,8 +304,8 @@ def create_hole_mesh(width, height, thickness):
     
     return all_vertices, all_uvs, all_normals, all_indices
 
-def create_cube_geometry(width, height, thickness, uv_mapping_size=None):
-    """创建立方体几何体（简化版）"""
+def create_cube_geometry(width, height, thickness, uv_info=None):
+    """创建立方体几何体（支持动态UV映射）"""
     print(f"🕳️ 一字孔设置: {Config.HOLE_WIDTH_MM:.1f}x{Config.HOLE_HEIGHT_MM:.1f}mm, 距顶部{Config.HOLE_TOP_DISTANCE_CM:.1f}cm")
     print(f"📐 圆角半径: {Config.CORNER_RADIUS_CM:.1f}cm")
     
@@ -265,7 +321,7 @@ def create_cube_geometry(width, height, thickness, uv_mapping_size=None):
     
     # 前后面
     for is_front in [True, False]:
-        vertices, uvs, normals, indices = create_face_mesh(width, height, thickness, hole_bounds, uv_mapping_size, is_front)
+        vertices, uvs, normals, indices = create_face_mesh(width, height, thickness, hole_bounds, uv_info, is_front)
         base_idx = len(all_vertices)
         all_vertices.extend(vertices)
         all_uvs.extend(uvs)
@@ -425,7 +481,7 @@ def main():
         print("❌ 图像处理失败")
         return
     
-    dimensions, texture_img, uv_mapping_size = result
+    dimensions, texture_img, uv_info = result
     
     # 生成文件路径
     base_name = os.path.splitext(os.path.basename(texture_path))[0]
@@ -434,7 +490,7 @@ def main():
     
     # 创建几何体
     print("🔧 创建几何数据...")
-    vertices, uvs, normals, indices = create_cube_geometry(*dimensions, uv_mapping_size)
+    vertices, uvs, normals, indices = create_cube_geometry(*dimensions, uv_info)
     
     # 导出GLB
     print("📦 生成GLB文件...")
