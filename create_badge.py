@@ -486,7 +486,16 @@ def create_glb_model(vertices, uvs, normals, indices, texture_img, output_path):
     # 创建网格和场景
     primitive = Primitive(attributes=Attributes(POSITION=0, TEXCOORD_0=1, NORMAL=2), indices=3, material=0)
     gltf.meshes = [Mesh(name="BadgeMesh", primitives=[primitive])]
-    gltf.nodes = [Node(name="BadgeNode", mesh=0)]
+    
+    # 添加旋转变换，让正面朝向相机 - 绕X轴旋转180度
+    import math
+    rotation_matrix = [
+        1, 0, 0, 0,
+        0, -1, 0, 0,
+        0, 0, -1, 0,
+        0, 0, 0, 1
+    ]
+    gltf.nodes = [Node(name="BadgeNode", mesh=0, matrix=rotation_matrix)]
     gltf.scenes = [Scene(name="BadgeScene", nodes=[0])]
     gltf.scene = 0
     
