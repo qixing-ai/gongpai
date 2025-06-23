@@ -166,7 +166,7 @@ def main():
     # 启动服务器
     demo.launch(
         server_name="0.0.0.0",
-        server_port=7860,
+        server_port=9201,
         share=False,
         inbrowser=True
     )
