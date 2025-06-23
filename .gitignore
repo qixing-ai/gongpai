@@ -1,3 +1,4 @@
 *.glb
 *.obj
 .DS_Store
+__pycache__
