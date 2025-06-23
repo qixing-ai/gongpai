@@ -99,13 +99,11 @@ def create_interface():
                 model_3d = gr.Model3D(
                     label="🎮 3D模型预览",
                     height=400,
-                    camera_position=(0, 0, 0.3),
+                    camera_position=(0, 0, 2),
                     zoom_speed=1.5,
                     pan_speed=1.5,
-                    clear_color=[0.0, 0.0, 0.0, 0.0],
-                    auto_rotate=False,
-                    enable_zoom=True,
-                    enable_pan=True
+                    clear_color=(0.0, 0.0, 0.0, 0.0),
+                    display_mode="solid"
                 )
         
         with gr.Row():
