@@ -7,11 +7,12 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "python": "/Users/weibo/miniconda3/envs/badge_env/bin/python",
+            "python": "/Users/weibo/miniconda3/envs/badge_env_py310/bin/python",
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
-            }
+            },
+            "justMyCode": false
         },
         {
             "name": "Python: create_badge.py",
@@ -19,11 +20,38 @@
             "request": "launch",
             "program": "${workspaceFolder}/create_badge.py",
             "console": "integratedTerminal",
-            "python": "/Users/weibo/miniconda3/envs/badge_env/bin/python",
+            "python": "/Users/weibo/miniconda3/envs/badge_env_py310/bin/python",
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
-            }
+            },
+            "justMyCode": false
+        },
+        {
+            "name": "Python: gradio_app.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/gradio_app.py",
+            "console": "integratedTerminal",
+            "python": "/Users/weibo/miniconda3/envs/badge_env_py310/bin/python",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": false
+        },
+        {
+            "name": "Python: test_3d_app.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/test_3d_app.py",
+            "console": "integratedTerminal",
+            "python": "/Users/weibo/miniconda3/envs/badge_env_py310/bin/python",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": false
         }
     ]
 } 

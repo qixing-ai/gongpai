@@ -1,0 +1,61 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "激活 badge_env_py310 环境",
+            "type": "shell",
+            "command": "conda",
+            "args": ["activate", "badge_env_py310"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "运行 gradio_app.py",
+            "type": "shell",
+            "command": "conda",
+            "args": ["run", "-n", "badge_env_py310", "python", "gradio_app.py"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "运行 create_badge.py",
+            "type": "shell",
+            "command": "conda",
+            "args": ["run", "-n", "badge_env_py310", "python", "create_badge.py"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "安装依赖",
+            "type": "shell",
+            "command": "conda",
+            "args": ["run", "-n", "badge_env_py310", "pip", "install", "-r", "requirements.txt"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        }
+    ]
+} 
