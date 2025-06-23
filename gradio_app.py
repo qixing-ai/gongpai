@@ -17,7 +17,7 @@ from create_badge import (
 def process_image_and_generate_model(uploaded_image):
     """处理上传的图片并生成3D模型"""
     if uploaded_image is None:
-        return None, None, None
+        return None, None, None, "请先上传图片"
     
     try:
         # 创建临时目录
@@ -38,7 +38,7 @@ def process_image_and_generate_model(uploaded_image):
         # 处理纹理
         result = load_and_process_texture(temp_image_path)
         if result[0] is None:
-            return None, None, None
+            return None, None, None, "图片处理失败"
         
         dimensions, texture_img, uv_info = result
         
@@ -54,7 +54,7 @@ def process_image_and_generate_model(uploaded_image):
         glb_success = create_glb_model(vertices, uvs, normals, indices, texture_img, glb_path)
         
         if not glb_success:
-            return None, None, None
+            return None, None, None, "GLB文件生成失败"
         
         print("📋 转换为OBJ格式...")
         obj_success = convert_glb_to_obj(glb_path, obj_path)
@@ -62,12 +62,13 @@ def process_image_and_generate_model(uploaded_image):
         return (
             glb_path,  # 3D预览
             glb_path,  # GLB下载
-            obj_path if obj_success else None  # OBJ下载
+            obj_path if obj_success else None,  # OBJ下载
+            "✅ 模型生成成功！点击下载按钮获取文件。"
         )
         
     except Exception as e:
         print(f"❌ 处理失败: {e}")
-        return None, None, None
+        return None, None, None, f"处理失败: {str(e)}"
 
 def create_interface():
     """创建Gradio界面"""
@@ -93,6 +94,13 @@ def create_interface():
                     variant="primary",
                     size="lg"
                 )
+                
+                # 状态信息
+                status_text = gr.Textbox(
+                    label="状态",
+                    value="请上传图片并点击生成按钮",
+                    interactive=False
+                )
             
             with gr.Column(scale=1):
                 # 3D模型预览区域
@@ -108,48 +116,21 @@ def create_interface():
                 
                 # 下载区域
                 with gr.Row():
-                    glb_download_btn = gr.Button(
-                        "📦 下载GLB文件 (推荐)",
-                        variant="secondary"
+                    glb_download = gr.File(
+                        label="📦 GLB文件下载 (推荐)",
+                        visible=True
                     )
-                    obj_download_btn = gr.Button(
-                        "📋 下载OBJ文件",
-                        variant="secondary"
+                    obj_download = gr.File(
+                        label="📋 OBJ文件下载",
+                        visible=True
                     )
         
-        # 隐藏的文件输出组件用于实际下载
-        glb_file_output = gr.File(visible=False)
-        obj_file_output = gr.File(visible=False)
-        
-
-        
-        # 存储生成的文件路径
-        glb_file_state = gr.State()
-        obj_file_state = gr.State()
-        
-        # 事件绑定
+        # 事件绑定 - 直接将文件路径传递给下载组件
         generate_btn.click(
             fn=process_image_and_generate_model,
             inputs=[image_input],
-            outputs=[model_3d, glb_file_state, obj_file_state]
+            outputs=[model_3d, glb_download, obj_download, status_text]
         )
-        
-        # 下载按钮事件
-        glb_download_btn.click(
-            fn=lambda x: x,
-            inputs=[glb_file_state],
-            outputs=[glb_file_output]
-        )
-        
-        obj_download_btn.click(
-            fn=lambda x: x,
-            inputs=[obj_file_state],
-            outputs=[obj_file_output]
-        )
-        
-
-        
-      
     
     return demo
 
