@@ -23,7 +23,7 @@ class Config:
     DEFAULT_THICKNESS = 0.002  # 0.2cm
     
     TEXTURE_SIZE = 512
-    TEXTURE_FILE = "3.png"
+    TEXTURE_FILE = "example_image.png"
     OUTPUT_DIR = "output"
     
     SUBDIVISIONS = 512
