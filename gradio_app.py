@@ -99,15 +99,13 @@ def create_interface():
                 model_3d = gr.Model3D(
                     label="🎮 3D模型预览",
                     height=400,
-                    camera_position=(0, 0, 2),
+                    camera_position=(0, 0, 0.1),
                     zoom_speed=1.5,
                     pan_speed=1.5,
                     clear_color=(0.0, 0.0, 0.0, 0.0),
                     display_mode="solid"
                 )
-        
-        with gr.Row():
-            with gr.Column():
+                
                 # 下载区域
                 with gr.Row():
                     glb_download_btn = gr.Button(
@@ -118,10 +116,10 @@ def create_interface():
                         "📋 下载OBJ文件",
                         variant="secondary"
                     )
-                
-                # 隐藏的文件输出组件用于实际下载
-                glb_file_output = gr.File(visible=False)
-                obj_file_output = gr.File(visible=False)
+        
+        # 隐藏的文件输出组件用于实际下载
+        glb_file_output = gr.File(visible=False)
+        obj_file_output = gr.File(visible=False)
         
 
         
