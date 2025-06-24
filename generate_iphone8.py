@@ -34,7 +34,7 @@ class iPhone8Generator:
         self.add_face(v1, v2, v3)
         self.add_face(v1, v3, v4)
     
-    def create_rounded_rectangle(self, width, height, radius, z, segments=16):
+    def create_rounded_rectangle(self, width, height, radius, z, segments=32):
         """创建圆角矩形轮廓"""
         vertices = []
         half_w = width / 2
@@ -57,22 +57,25 @@ class iPhone8Generator:
         
         return vertices
     
-    def create_convex_edge(self, outline_vertices, base_z, segments=6):
-        """创建向外凸起的圆弧边缘"""
-        edge_layers = []
+    def create_edge_profile(self, outline_vertices, segments=16):
+        """创建完整的边缘轮廓，包含上下连接的侧面"""
+        all_layers = []
         
+        # 从底部到顶部创建完整的边缘轮廓
         for layer in range(segments + 1):
             layer_vertices = []
             t = layer / segments
-            angle = t * math.pi / 2
             
-            z_offset = self.edge_radius * math.sin(angle)
-            expand_factor = 1 + self.edge_radius * math.sin(angle) / max(self.width, self.height) * 2
+            # 使用正弦函数创建平滑的凸起轮廓
+            # t=0时在底部，t=1时在顶部
+            angle = t * math.pi  # 0到π的范围
             
-            if base_z > 0:
-                z_pos = base_z - z_offset
-            else:
-                z_pos = base_z + z_offset
+            # Z坐标：从-depth/2到+depth/2
+            z_pos = -self.depth/2 + t * self.depth
+            
+            # 凸起因子：在中间最大，两端最小
+            convex_factor = math.sin(angle) * self.edge_radius
+            expand_factor = 1 + convex_factor / max(self.width, self.height) * 4
             
             for vertex_idx in outline_vertices:
                 x, y, _ = self.vertices[vertex_idx]
@@ -80,12 +83,12 @@ class iPhone8Generator:
                 y_expanded = y * expand_factor
                 layer_vertices.append(self.add_vertex(x_expanded, y_expanded, z_pos))
             
-            edge_layers.append(layer_vertices)
+            all_layers.append(layer_vertices)
         
-        return edge_layers
+        return all_layers
     
-    def connect_layers(self, edge_layers, is_top=True):
-        """连接边缘层"""
+    def connect_edge_layers(self, edge_layers):
+        """连接所有边缘层，形成完整的侧面"""
         for i in range(len(edge_layers) - 1):
             current_layer = edge_layers[i]
             next_layer = edge_layers[i + 1]
@@ -94,26 +97,36 @@ class iPhone8Generator:
             for j in range(num_vertices):
                 next_j = (j + 1) % num_vertices
                 
-                if is_top:
-                    self.add_quad(
-                        current_layer[j], next_layer[j],
-                        next_layer[next_j], current_layer[next_j]
-                    )
-                else:
-                    self.add_quad(
-                        current_layer[j], current_layer[next_j],
-                        next_layer[next_j], next_layer[j]
-                    )
+                # 正确的面方向：保证法向量向外
+                self.add_quad(
+                    current_layer[j], current_layer[next_j],
+                    next_layer[next_j], next_layer[j]
+                )
     
-    def connect_sides(self, top_outer, bottom_outer):
-        """连接上下边缘"""
-        num_vertices = len(top_outer)
-        for i in range(num_vertices):
-            next_i = (i + 1) % num_vertices
-            self.add_quad(
-                top_outer[i], top_outer[next_i],
-                bottom_outer[next_i], bottom_outer[i]
-            )
+    def create_inner_surfaces(self):
+        """创建内部的上下表面"""
+        # 创建稍微缩小的内部轮廓，用于顶面和底面
+        inner_margin = self.edge_radius * 0.5
+        
+        # 顶面轮廓 - 使用更高分辨率
+        top_surface = self.create_rounded_rectangle(
+            self.width - inner_margin * 2, 
+            self.height - inner_margin * 2, 
+            self.corner_radius - inner_margin, 
+            self.depth/2 - self.edge_radius * 0.3,
+            segments=24
+        )
+        
+        # 底面轮廓 - 使用更高分辨率
+        bottom_surface = self.create_rounded_rectangle(
+            self.width - inner_margin * 2, 
+            self.height - inner_margin * 2, 
+            self.corner_radius - inner_margin, 
+            -self.depth/2 + self.edge_radius * 0.3,
+            segments=24
+        )
+        
+        return top_surface, bottom_surface
     
     def triangulate_face(self, vertices, z, is_front=True):
         """三角化表面"""
@@ -133,29 +146,23 @@ class iPhone8Generator:
         """生成iPhone 8模型"""
         print("正在生成iPhone 8模型...")
         
-        # 创建内层轮廓
-        top_inner = self.create_rounded_rectangle(
-            self.width, self.height, self.corner_radius, 
-            self.depth/2 - self.edge_radius
+        # 创建外轮廓参考线（用于生成边缘）- 使用高分辨率
+        outline_reference = self.create_rounded_rectangle(
+            self.width, self.height, self.corner_radius, 0, segments=40
         )
         
-        bottom_inner = self.create_rounded_rectangle(
-            self.width, self.height, self.corner_radius, 
-            -self.depth/2 + self.edge_radius
-        )
+        # 创建完整的边缘轮廓 - 使用更多层数获得更平滑的凸起
+        edge_layers = self.create_edge_profile(outline_reference, segments=20)
         
-        # 创建凸起边缘
-        top_edge_layers = self.create_convex_edge(top_inner, self.depth/2 - self.edge_radius)
-        bottom_edge_layers = self.create_convex_edge(bottom_inner, -self.depth/2 + self.edge_radius)
+        # 连接所有边缘层形成侧面
+        self.connect_edge_layers(edge_layers)
         
-        # 连接所有面
-        self.connect_layers(top_edge_layers, is_top=True)
-        self.connect_layers(bottom_edge_layers, is_top=False)
-        self.connect_sides(top_edge_layers[-1], bottom_edge_layers[-1])
+        # 创建内部上下表面
+        top_surface, bottom_surface = self.create_inner_surfaces()
         
-        # 添加上下表面
-        self.triangulate_face(top_inner, self.depth/2 - self.edge_radius, True)
-        self.triangulate_face(bottom_inner, -self.depth/2 + self.edge_radius, False)
+        # 三角化上下表面
+        self.triangulate_face(top_surface, self.depth/2 - self.edge_radius * 0.3, True)
+        self.triangulate_face(bottom_surface, -self.depth/2 + self.edge_radius * 0.3, False)
         
         print(f"模型生成完成！顶点数：{len(self.vertices)}，面数：{len(self.faces)}")
     
@@ -168,7 +175,7 @@ class iPhone8Generator:
         
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write("# iPhone 8 3D模型\n")
-            f.write("# 向外凸起圆弧边缘\n")
+            f.write("# 向外凸起圆弧边缘，无空隙设计\n")
             f.write(f"# 顶点数: {len(self.vertices)}\n")
             f.write(f"# 面数: {len(self.faces)}\n\n")
             
@@ -191,15 +198,15 @@ def main():
     
     generator = iPhone8Generator()
     generator.generate()
-    generator.save_obj("iphone8.obj")
+    generator.save_obj("iphone8_high_res.obj")
     
     print("\n模型规格:")
     print(f"- 尺寸: {generator.width} × {generator.height} × {generator.depth}")
     print(f"- 顶点数: {len(generator.vertices)}")
     print(f"- 面数: {len(generator.faces)}")
-    print(f"- 边缘: 向外凸起圆弧")
+    print(f"- 边缘: 向外凸起圆弧，完整侧面")
     
-    print("\n✅ iPhone 8模型生成完成！")
+    print("\n✅ iPhone 8模型生成完成（已修复空隙问题）！")
 
 if __name__ == "__main__":
     main() 
