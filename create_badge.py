@@ -106,7 +106,7 @@ def load_and_process_texture(img_path):
             new_height = texture_size
             new_width = int(texture_size * img_ratio)
         
-        resized_img = img.resize((new_width, new_height), PILImage.LANCZOS)
+        resized_img = img.resize((new_width, new_height), PILImage.Resampling.LANCZOS)
         texture_img = PILImage.new('RGB', (texture_size, texture_size), (255, 255, 255))
         paste_x = (texture_size - new_width) // 2
         paste_y = (texture_size - new_height) // 2
@@ -490,10 +490,10 @@ def create_glb_model(vertices, uvs, normals, indices, texture_img, output_path):
     # 添加旋转变换，让正面朝向相机 - 绕X轴旋转180度
     import math
     rotation_matrix = [
-        1, 0, 0, 0,
-        0, -1, 0, 0,
-        0, 0, -1, 0,
-        0, 0, 0, 1
+        1.0, 0.0, 0.0, 0.0,
+        0.0, -1.0, 0.0, 0.0,
+        0.0, 0.0, -1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0
     ]
     gltf.nodes = [Node(name="BadgeNode", mesh=0, matrix=rotation_matrix)]
     gltf.scenes = [Scene(name="BadgeScene", nodes=[0])]
@@ -512,27 +512,28 @@ def convert_glb_to_obj(glb_path, obj_path):
     """转换GLB到OBJ格式"""
     try:
         scene = trimesh.load(glb_path, file_type='glb')
-        mesh = (trimesh.util.concatenate([g for g in scene.geometry.values()]) 
-                if isinstance(scene, trimesh.Scene) else scene)
-        
-        # 处理纹理和颜色
-        if (hasattr(mesh.visual, 'uv') and mesh.visual.uv is not None and
-            hasattr(mesh.visual, 'material') and mesh.visual.material and 
-            hasattr(mesh.visual.material, 'baseColorTexture') and 
-            mesh.visual.material.baseColorTexture):
-            
-            texture = mesh.visual.material.baseColorTexture
-            texture_array = np.array(texture)
-            tex_h, tex_w = texture_array.shape[:2]
-            
-            u_coords = np.clip(mesh.visual.uv[:, 0] * (tex_w - 1), 0, tex_w - 1).astype(int)
-            v_coords = np.clip((1 - mesh.visual.uv[:, 1]) * (tex_h - 1), 0, tex_h - 1).astype(int)
-            colors = texture_array[v_coords, u_coords, :3]
-            
-            mesh = trimesh.Trimesh(vertices=mesh.vertices, faces=mesh.faces, vertex_colors=colors)
-            mesh.export(obj_path, file_type='obj', include_color=True)
+        if isinstance(scene, trimesh.Scene):
+            mesh = trimesh.util.concatenate([g for g in scene.geometry.values()])
         else:
+            mesh = scene
+        
+        # 确保是 Trimesh 对象并直接导出
+        if isinstance(mesh, trimesh.Trimesh):
             mesh.export(obj_path, file_type='obj')
+        else:
+            # 如果不是 Trimesh 对象，尝试转换
+            try:
+                if hasattr(mesh, 'vertices') and hasattr(mesh, 'faces'):
+                    vertices = getattr(mesh, 'vertices')
+                    faces = getattr(mesh, 'faces')
+                    new_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+                    new_mesh.export(obj_path, file_type='obj')
+                else:
+                    # 简单导出
+                    mesh.export(obj_path, file_type='obj')
+            except Exception:
+                # 最后尝试直接导出
+                mesh.export(obj_path, file_type='obj')
         
         print(f"✅ OBJ导出成功: {os.path.basename(obj_path)}")
         return True
