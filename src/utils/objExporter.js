@@ -36,7 +36,7 @@ export class BadgeOBJExporter {
       
       if (r > 0.1) {
         // 圆角矩形
-        const segments = 8;
+        const segments = 16;
         const corners = [
           { cx: centerX + w - r, cy: centerY + h - r, startAngle: 0 },
           { cx: centerX - w + r, cy: centerY + h - r, startAngle: Math.PI / 2 },
@@ -63,12 +63,28 @@ export class BadgeOBJExporter {
         );
       }
     } else if (type === 'circle') {
-      const { radius, centerX, centerY, segments = 16 } = params;
+      const { radius, centerX, centerY } = params;
+      // 根据圆形大小动态调整分段数，确保足够圆滑
+      const segments = Math.max(32, Math.min(128, Math.round(radius * 8)));
       for (let i = 0; i < segments; i++) {
         const angle = (2 * Math.PI * i) / segments;
         points.push({
           x: centerX + radius * Math.cos(angle),
           y: centerY + radius * Math.sin(angle)
+        });
+      }
+    } else if (type === 'oval') {
+      const { width, height, centerX, centerY } = params;
+      const radiusX = width / 2;
+      const radiusY = height / 2;
+      // 根据椭圆大小动态调整分段数
+      const avgRadius = (radiusX + radiusY) / 2;
+      const segments = Math.max(32, Math.min(128, Math.round(avgRadius * 8)));
+      for (let i = 0; i < segments; i++) {
+        const angle = (2 * Math.PI * i) / segments;
+        points.push({
+          x: centerX + radiusX * Math.cos(angle),
+          y: centerY + radiusY * Math.sin(angle)
         });
       }
     }
@@ -194,11 +210,21 @@ export class BadgeOBJExporter {
       // 创建孔洞
       const holeX = 0;
       const holeY = height / 2 - holeSettings.offsetY;
-      const holeParams = holeSettings.shape === 'circle' 
-        ? { radius: holeSettings.size / 2, centerX: holeX, centerY: holeY }
-        : { width: holeSettings.width, height: holeSettings.height, centerX: holeX, centerY: holeY, borderRadius: holeSettings.borderRadius };
       
-      const innerPoints = this.createPoints(holeSettings.shape === 'circle' ? 'circle' : 'rectangle', holeParams);
+      let holeParams, holeType;
+      
+      if (holeSettings.shape === 'circle') {
+        holeParams = { radius: holeSettings.size / 2, centerX: holeX, centerY: holeY };
+        holeType = 'circle';
+      } else if (holeSettings.shape === 'oval') {
+        holeParams = { width: holeSettings.size, height: holeSettings.size * 0.6, centerX: holeX, centerY: holeY };
+        holeType = 'oval';
+      } else {
+        holeParams = { width: holeSettings.width, height: holeSettings.height, centerX: holeX, centerY: holeY, borderRadius: holeSettings.borderRadius };
+        holeType = 'rectangle';
+      }
+      
+      const innerPoints = this.createPoints(holeType, holeParams);
       const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height);
       
       this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs);
