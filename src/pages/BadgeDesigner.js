@@ -49,7 +49,7 @@ const BadgeDesigner = () => {
     enabled: false,
     shape: 'circle',
     size: 6,          // mm
-    offsetY: 3,       // mm
+    offsetY: 1,       // mm (允许更靠近顶部)
     width: 6,         // mm
     height: 4,        // mm
     borderRadius: 2,  // mm
@@ -151,8 +151,17 @@ const BadgeDesigner = () => {
     const { type, element, resizeType, startValues } = interactionState;
     
     if (type === 'drag') {
-      const maxX = badgeSettings.width - (element === 'image' ? imageSettings.width : 20);
-      const maxY = badgeSettings.height - (element === 'image' ? imageSettings.height : 20);
+      let maxX, maxY;
+      
+      if (element === 'image') {
+        maxX = badgeSettings.width - imageSettings.width;
+        maxY = badgeSettings.height - imageSettings.height;
+      } else if (element === 'text') {
+        // 文字可以拖拽到边缘，只需预留很小的空间避免完全贴边
+        maxX = badgeSettings.width - 5;
+        maxY = badgeSettings.height - 5;
+      }
+      
       const newX = Math.max(0, Math.min(maxX, startValues.x + deltaX));
       const newY = Math.max(0, Math.min(maxY, startValues.y + deltaY));
       
@@ -205,7 +214,7 @@ const BadgeDesigner = () => {
         const newHeight = Math.max(2, Math.min(15, startValues.height + deltaY));
         setHoleSettings(prev => ({ ...prev, height: Math.round(newHeight * 2) / 2 }));
       } else if (resizeType === 'position') {
-        const newOffsetY = Math.max(3, Math.min(20, startValues.offsetY + deltaY));
+        const newOffsetY = Math.max(1, Math.min(20, startValues.offsetY + deltaY));
         setHoleSettings(prev => ({ ...prev, offsetY: Math.round(newOffsetY * 2) / 2 }));
       }
     }
@@ -257,7 +266,7 @@ const BadgeDesigner = () => {
         } else if (selectedElement === 'text') {
           setTextSettings(prev => ({
             ...prev,
-            x: Math.min(badgeSettings.width - 20, prev.x + step)
+            x: Math.min(badgeSettings.width - 5, prev.x + step)
           }));
         }
         break;
@@ -279,7 +288,7 @@ const BadgeDesigner = () => {
         } else if (selectedElement === 'text') {
           setTextSettings(prev => ({
             ...prev,
-            y: Math.min(badgeSettings.height - 20, prev.y + step)
+            y: Math.min(badgeSettings.height - 5, prev.y + step)
           }));
         }
         break;
@@ -644,7 +653,7 @@ const BadgeDesigner = () => {
       enabled: false,
       shape: 'circle',
       size: 6,
-      offsetY: 3,
+      offsetY: 1,
       width: 6,
       height: 4,
       borderRadius: 2,
@@ -815,7 +824,7 @@ const BadgeDesigner = () => {
                     <div>
                       <Text>垂直偏移: {holeSettings.offsetY}mm</Text>
                       <Slider
-                        min={3}
+                        min={1}
                         max={20}
                         value={holeSettings.offsetY}
                         onChange={(value) => setHoleSettings(prev => ({ ...prev, offsetY: value }))}
