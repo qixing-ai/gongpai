@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Layout,
   Card,
@@ -61,7 +61,7 @@ const BadgeDesigner = () => {
   // 文字设置
   const [textSettings, setTextSettings] = useState({
     content: '张三\n技术部',
-    fontSize: 1.5, // 以毫米为单位
+    fontSize: 1.5,
     color: '#000000',
     fontFamily: 'Microsoft YaHei',
     x: 26,
@@ -69,51 +69,18 @@ const BadgeDesigner = () => {
     lineHeight: 1.4,
   });
 
-  // 拖拽状态
-  const [dragState, setDragState] = useState({
-    isDragging: false,
-    dragType: null, // 'image' 或 'text'
+  // 统一的交互状态
+  const [interactionState, setInteractionState] = useState({
+    type: null, // 'drag', 'resize-badge', 'resize-image', 'resize-hole'
+    element: null, // 'badge', 'image', 'text', 'hole'
+    resizeType: null, // 'width', 'height', 'corner', 'size', 'position'
     startX: 0,
     startY: 0,
-    elementStartX: 0,
-    elementStartY: 0,
+    startValues: {},
   });
 
   // 选中状态
-  const [selectedElement, setSelectedElement] = useState(null); // 'image' 或 'text'
-
-  // 工牌尺寸拖拽状态
-  const [resizeState, setResizeState] = useState({
-    isResizing: false,
-    resizeType: null, // 'width', 'height', 'corner'
-    startX: 0,
-    startY: 0,
-    startWidth: 0,
-    startHeight: 0,
-  });
-
-  // 图片尺寸拖拽状态
-  const [imageResizeState, setImageResizeState] = useState({
-    isResizing: false,
-    resizeType: null, // 'width', 'height', 'corner'
-    startX: 0,
-    startY: 0,
-    startWidth: 0,
-    startHeight: 0,
-  });
-
-  // 穿孔拖拽状态
-  const [holeResizeState, setHoleResizeState] = useState({
-    isResizing: false,
-    resizeType: null, // 'size', 'width', 'height', 'corner', 'position'
-    startX: 0,
-    startY: 0,
-    startSize: 0,
-    startWidth: 0,
-    startHeight: 0,
-    startOffsetY: 0,
-  });
-
+  const [selectedElement, setSelectedElement] = useState(null);
   const badgePreviewRef = useRef(null);
 
   // 处理图片上传
@@ -122,291 +89,156 @@ const BadgeDesigner = () => {
     if (file) {
       const reader = new FileReader();
       reader.onload = (e) => {
-        setImageSettings(prev => ({
-          ...prev,
-          src: e.target.result
-        }));
+        setImageSettings(prev => ({ ...prev, src: e.target.result }));
         message.success('图片上传成功');
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // 开始拖拽
-  const handleMouseDown = useCallback((e, type) => {
+  // 开始交互（拖拽或调整尺寸）
+  const startInteraction = useCallback((e, type, element, resizeType = null) => {
     e.preventDefault();
     e.stopPropagation();
-    setSelectedElement(type);
+    setSelectedElement(element);
     
-    setDragState({
-      isDragging: true,
-      dragType: type,
+    const startValues = {};
+    if (type === 'drag') {
+      if (element === 'image') {
+        startValues.x = imageSettings.x;
+        startValues.y = imageSettings.y;
+      } else if (element === 'text') {
+        startValues.x = textSettings.x;
+        startValues.y = textSettings.y;
+      }
+    } else if (type === 'resize-badge') {
+      startValues.width = badgeSettings.width;
+      startValues.height = badgeSettings.height;
+    } else if (type === 'resize-image') {
+      startValues.width = imageSettings.width;
+      startValues.height = imageSettings.height;
+    } else if (type === 'resize-hole') {
+      startValues.size = holeSettings.size;
+      startValues.width = holeSettings.width;
+      startValues.height = holeSettings.height;
+      startValues.offsetY = holeSettings.offsetY;
+    }
+    
+    setInteractionState({
+      type,
+      element,
+      resizeType,
       startX: e.clientX,
       startY: e.clientY,
-      elementStartX: type === 'image' ? imageSettings.x : textSettings.x,
-      elementStartY: type === 'image' ? imageSettings.y : textSettings.y,
+      startValues,
     });
-  }, [imageSettings.x, imageSettings.y, textSettings.x, textSettings.y]);
+  }, [imageSettings, textSettings, badgeSettings, holeSettings]);
+
+  // 处理交互移动
+  const handleInteractionMove = useCallback((e) => {
+    if (!interactionState.type) return;
+    
+    const scale = 4;
+    const deltaX = (e.clientX - interactionState.startX) / scale;
+    const deltaY = (e.clientY - interactionState.startY) / scale;
+    
+    const { type, element, resizeType, startValues } = interactionState;
+    
+    if (type === 'drag') {
+      const maxX = badgeSettings.width - (element === 'image' ? imageSettings.width : 20);
+      const maxY = badgeSettings.height - (element === 'image' ? imageSettings.height : 20);
+      const newX = Math.max(0, Math.min(maxX, startValues.x + deltaX));
+      const newY = Math.max(0, Math.min(maxY, startValues.y + deltaY));
+      
+      if (element === 'image') {
+        setImageSettings(prev => ({ ...prev, x: Math.round(newX), y: Math.round(newY) }));
+      } else if (element === 'text') {
+        setTextSettings(prev => ({ ...prev, x: Math.round(newX), y: Math.round(newY) }));
+      }
+    } else if (type === 'resize-badge') {
+      let newWidth = startValues.width;
+      let newHeight = startValues.height;
+      
+      if (resizeType === 'width' || resizeType === 'corner') {
+        newWidth = Math.max(50, Math.min(120, startValues.width + deltaX));
+      }
+      if (resizeType === 'height' || resizeType === 'corner') {
+        newHeight = Math.max(30, Math.min(200, startValues.height + deltaY));
+      }
+      
+      setBadgeSettings(prev => ({
+        ...prev,
+        width: Math.round(newWidth),
+        height: Math.round(newHeight)
+      }));
+    } else if (type === 'resize-image') {
+      let newWidth = startValues.width;
+      let newHeight = startValues.height;
+      
+      if (resizeType === 'width' || resizeType === 'corner') {
+        newWidth = Math.max(10, Math.min(80, startValues.width + deltaX));
+      }
+      if (resizeType === 'height' || resizeType === 'corner') {
+        newHeight = Math.max(10, Math.min(80, startValues.height + deltaY));
+      }
+      
+      setImageSettings(prev => ({
+        ...prev,
+        width: Math.round(newWidth),
+        height: Math.round(newHeight)
+      }));
+    } else if (type === 'resize-hole') {
+      if (resizeType === 'size') {
+        const newSize = Math.max(3, Math.min(15, startValues.size + deltaX));
+        setHoleSettings(prev => ({ ...prev, size: Math.round(newSize * 2) / 2 }));
+      } else if (resizeType === 'width' || resizeType === 'corner') {
+        const newWidth = Math.max(3, Math.min(20, startValues.width + deltaX));
+        setHoleSettings(prev => ({ ...prev, width: Math.round(newWidth * 2) / 2 }));
+      }
+      if (resizeType === 'height' || resizeType === 'corner') {
+        const newHeight = Math.max(2, Math.min(15, startValues.height + deltaY));
+        setHoleSettings(prev => ({ ...prev, height: Math.round(newHeight * 2) / 2 }));
+      } else if (resizeType === 'position') {
+        const newOffsetY = Math.max(3, Math.min(20, startValues.offsetY + deltaY));
+        setHoleSettings(prev => ({ ...prev, offsetY: Math.round(newOffsetY * 2) / 2 }));
+      }
+    }
+  }, [interactionState, badgeSettings, imageSettings]);
+
+  // 结束交互
+  const endInteraction = useCallback(() => {
+    setInteractionState({
+      type: null,
+      element: null,
+      resizeType: null,
+      startX: 0,
+      startY: 0,
+      startValues: {},
+    });
+  }, []);
 
   // 双击编辑文字
   const handleDoubleClick = useCallback((e, type) => {
     e.preventDefault();
     e.stopPropagation();
     if (type === 'text') {
-      // 可以在这里添加内联编辑功能
       message.info('双击文字可快速编辑（功能开发中）');
     }
-  }, []);
-
-
-
-  // 开始调整工牌尺寸
-  const handleResizeStart = useCallback((e, type) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    setResizeState({
-      isResizing: true,
-      resizeType: type,
-      startX: e.clientX,
-      startY: e.clientY,
-      startWidth: badgeSettings.width,
-      startHeight: badgeSettings.height,
-    });
-  }, [badgeSettings.width, badgeSettings.height]);
-
-  // 调整工牌尺寸中
-  const handleResizeMove = useCallback((e) => {
-    if (!resizeState.isResizing) return;
-    
-    const scale = 4;
-    const deltaX = (e.clientX - resizeState.startX) / scale;
-    const deltaY = (e.clientY - resizeState.startY) / scale;
-    
-    let newWidth = resizeState.startWidth;
-    let newHeight = resizeState.startHeight;
-    
-    switch (resizeState.resizeType) {
-      case 'width':
-        newWidth = Math.max(50, Math.min(120, resizeState.startWidth + deltaX));
-        break;
-      case 'height':
-        newHeight = Math.max(30, Math.min(200, resizeState.startHeight + deltaY));
-        break;
-      case 'corner':
-        newWidth = Math.max(50, Math.min(120, resizeState.startWidth + deltaX));
-        newHeight = Math.max(30, Math.min(200, resizeState.startHeight + deltaY));
-        break;
-    }
-    
-    setBadgeSettings(prev => ({
-      ...prev,
-      width: Math.round(newWidth),
-      height: Math.round(newHeight)
-    }));
-  }, [resizeState]);
-
-  // 结束调整工牌尺寸
-  const handleResizeEnd = useCallback(() => {
-    setResizeState({
-      isResizing: false,
-      resizeType: null,
-      startX: 0,
-      startY: 0,
-      startWidth: 0,
-      startHeight: 0,
-    });
-  }, []);
-
-  // 开始调整图片尺寸
-  const handleImageResizeStart = useCallback((e, type) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    setImageResizeState({
-      isResizing: true,
-      resizeType: type,
-      startX: e.clientX,
-      startY: e.clientY,
-      startWidth: imageSettings.width,
-      startHeight: imageSettings.height,
-    });
-  }, [imageSettings.width, imageSettings.height]);
-
-  // 调整图片尺寸中
-  const handleImageResizeMove = useCallback((e) => {
-    if (!imageResizeState.isResizing) return;
-    
-    const scale = 4;
-    const deltaX = (e.clientX - imageResizeState.startX) / scale;
-    const deltaY = (e.clientY - imageResizeState.startY) / scale;
-    
-    let newWidth = imageResizeState.startWidth;
-    let newHeight = imageResizeState.startHeight;
-    
-    switch (imageResizeState.resizeType) {
-      case 'width':
-        newWidth = Math.max(10, Math.min(80, imageResizeState.startWidth + deltaX));
-        break;
-      case 'height':
-        newHeight = Math.max(10, Math.min(80, imageResizeState.startHeight + deltaY));
-        break;
-      case 'corner':
-        newWidth = Math.max(10, Math.min(80, imageResizeState.startWidth + deltaX));
-        newHeight = Math.max(10, Math.min(80, imageResizeState.startHeight + deltaY));
-        break;
-    }
-    
-    setImageSettings(prev => ({
-      ...prev,
-      width: Math.round(newWidth),
-      height: Math.round(newHeight)
-    }));
-  }, [imageResizeState]);
-
-  // 结束调整图片尺寸
-  const handleImageResizeEnd = useCallback(() => {
-    setImageResizeState({
-      isResizing: false,
-      resizeType: null,
-      startX: 0,
-      startY: 0,
-      startWidth: 0,
-      startHeight: 0,
-    });
-  }, []);
-
-  // 开始调整穿孔尺寸
-  const handleHoleResizeStart = useCallback((e, type) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    setHoleResizeState({
-      isResizing: true,
-      resizeType: type,
-      startX: e.clientX,
-      startY: e.clientY,
-      startSize: holeSettings.size,
-      startWidth: holeSettings.width,
-      startHeight: holeSettings.height,
-      startOffsetY: holeSettings.offsetY,
-    });
-  }, [holeSettings.size, holeSettings.width, holeSettings.height, holeSettings.offsetY]);
-
-  // 调整穿孔尺寸中
-  const handleHoleResizeMove = useCallback((e) => {
-    if (!holeResizeState.isResizing) return;
-    
-    const scale = 4;
-    const deltaX = (e.clientX - holeResizeState.startX) / scale;
-    const deltaY = (e.clientY - holeResizeState.startY) / scale;
-    
-    switch (holeResizeState.resizeType) {
-      case 'size':
-        const newSize = Math.max(3, Math.min(15, holeResizeState.startSize + deltaX));
-        setHoleSettings(prev => ({ ...prev, size: Math.round(newSize * 2) / 2 }));
-        break;
-      case 'width':
-        const newWidth = Math.max(3, Math.min(20, holeResizeState.startWidth + deltaX));
-        setHoleSettings(prev => ({ ...prev, width: Math.round(newWidth * 2) / 2 }));
-        break;
-      case 'height':
-        const newHeight = Math.max(2, Math.min(15, holeResizeState.startHeight + deltaY));
-        setHoleSettings(prev => ({ ...prev, height: Math.round(newHeight * 2) / 2 }));
-        break;
-      case 'corner':
-        const newCornerWidth = Math.max(3, Math.min(20, holeResizeState.startWidth + deltaX));
-        const newCornerHeight = Math.max(2, Math.min(15, holeResizeState.startHeight + deltaY));
-        setHoleSettings(prev => ({ 
-          ...prev, 
-          width: Math.round(newCornerWidth * 2) / 2,
-          height: Math.round(newCornerHeight * 2) / 2
-        }));
-        break;
-      case 'position':
-        const newOffsetY = Math.max(3, Math.min(20, holeResizeState.startOffsetY + deltaY));
-        setHoleSettings(prev => ({ ...prev, offsetY: Math.round(newOffsetY * 2) / 2 }));
-        break;
-    }
-  }, [holeResizeState]);
-
-  // 结束调整穿孔尺寸
-  const handleHoleResizeEnd = useCallback(() => {
-    setHoleResizeState({
-      isResizing: false,
-      resizeType: null,
-      startX: 0,
-      startY: 0,
-      startSize: 0,
-      startWidth: 0,
-      startHeight: 0,
-      startOffsetY: 0,
-    });
-  }, []);
-
-  // 拖拽中
-  const handleMouseMove = useCallback((e) => {
-    if (!dragState.isDragging) return;
-    
-    const scale = 4;
-    const deltaX = (e.clientX - dragState.startX) / scale;
-    const deltaY = (e.clientY - dragState.startY) / scale;
-    
-    const newX = Math.max(0, Math.min(
-      badgeSettings.width - (dragState.dragType === 'image' ? imageSettings.width : 20),
-      dragState.elementStartX + deltaX
-    ));
-    const newY = Math.max(0, Math.min(
-      badgeSettings.height - (dragState.dragType === 'image' ? imageSettings.height : 20),
-      dragState.elementStartY + deltaY
-    ));
-
-    if (dragState.dragType === 'image') {
-      setImageSettings(prev => ({
-        ...prev,
-        x: Math.round(newX),
-        y: Math.round(newY)
-      }));
-    } else if (dragState.dragType === 'text') {
-      setTextSettings(prev => ({
-        ...prev,
-        x: Math.round(newX),
-        y: Math.round(newY)
-      }));
-    }
-  }, [dragState, badgeSettings.width, badgeSettings.height, imageSettings.width, imageSettings.height]);
-
-  // 结束拖拽
-  const handleMouseUp = useCallback(() => {
-    setDragState({
-      isDragging: false,
-      dragType: null,
-      startX: 0,
-      startY: 0,
-      elementStartX: 0,
-      elementStartY: 0,
-    });
   }, []);
 
   // 键盘事件处理
   const handleKeyDown = useCallback((e) => {
     if (!selectedElement) return;
     
-    const step = e.shiftKey ? 5 : 1; // Shift + 方向键移动5mm，否则1mm
+    const step = e.shiftKey ? 5 : 1;
     
     switch (e.key) {
       case 'ArrowLeft':
         e.preventDefault();
         if (selectedElement === 'image') {
-          setImageSettings(prev => ({
-            ...prev,
-            x: Math.max(0, prev.x - step)
-          }));
+          setImageSettings(prev => ({ ...prev, x: Math.max(0, prev.x - step) }));
         } else if (selectedElement === 'text') {
-          setTextSettings(prev => ({
-            ...prev,
-            x: Math.max(0, prev.x - step)
-          }));
+          setTextSettings(prev => ({ ...prev, x: Math.max(0, prev.x - step) }));
         }
         break;
       case 'ArrowRight':
@@ -426,15 +258,9 @@ const BadgeDesigner = () => {
       case 'ArrowUp':
         e.preventDefault();
         if (selectedElement === 'image') {
-          setImageSettings(prev => ({
-            ...prev,
-            y: Math.max(0, prev.y - step)
-          }));
+          setImageSettings(prev => ({ ...prev, y: Math.max(0, prev.y - step) }));
         } else if (selectedElement === 'text') {
-          setTextSettings(prev => ({
-            ...prev,
-            y: Math.max(0, prev.y - step)
-          }));
+          setTextSettings(prev => ({ ...prev, y: Math.max(0, prev.y - step) }));
         }
         break;
       case 'ArrowDown':
@@ -469,84 +295,99 @@ const BadgeDesigner = () => {
         setSelectedElement(null);
         break;
     }
-  }, [selectedElement, badgeSettings.width, badgeSettings.height]);
+  }, [selectedElement, badgeSettings]);
 
-  // 添加全局事件监听
-  React.useEffect(() => {
-    const isDraggingOrResizing = dragState.isDragging || resizeState.isResizing || imageResizeState.isResizing || holeResizeState.isResizing;
+  // 事件监听
+  useEffect(() => {
+    const isInteracting = interactionState.type !== null;
     
-    if (isDraggingOrResizing) {
-      if (dragState.isDragging) {
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-      }
-      if (resizeState.isResizing) {
-        document.addEventListener('mousemove', handleResizeMove);
-        document.addEventListener('mouseup', handleResizeEnd);
-      }
-      if (imageResizeState.isResizing) {
-        document.addEventListener('mousemove', handleImageResizeMove);
-        document.addEventListener('mouseup', handleImageResizeEnd);
-      }
-      if (holeResizeState.isResizing) {
-        document.addEventListener('mousemove', handleHoleResizeMove);
-        document.addEventListener('mouseup', handleHoleResizeEnd);
-      }
+    if (isInteracting) {
+      document.addEventListener('mousemove', handleInteractionMove);
+      document.addEventListener('mouseup', endInteraction);
       
-      let cursor = '';
-      if (dragState.isDragging) cursor = 'grabbing';
-      else if (resizeState.isResizing) cursor = 'nw-resize';
-      else if (imageResizeState.isResizing) {
-        switch (imageResizeState.resizeType) {
-          case 'width': cursor = 'ew-resize'; break;
-          case 'height': cursor = 'ns-resize'; break;
-          case 'corner': cursor = 'nw-resize'; break;
-          default: cursor = 'nw-resize';
-        }
-      }
-      else if (holeResizeState.isResizing) {
-        switch (holeResizeState.resizeType) {
-          case 'size': cursor = 'ew-resize'; break;
-          case 'width': cursor = 'ew-resize'; break;
-          case 'height': cursor = 'ns-resize'; break;
-          case 'corner': cursor = 'nw-resize'; break;
-          case 'position': cursor = 'ns-resize'; break;
-          default: cursor = 'nw-resize';
-        }
-      }
+      // 设置光标样式
+      const cursorMap = {
+        'drag': 'grabbing',
+        'resize-badge': 'nw-resize',
+        'resize-image': interactionState.resizeType === 'width' ? 'ew-resize' : 
+                       interactionState.resizeType === 'height' ? 'ns-resize' : 'nw-resize',
+        'resize-hole': interactionState.resizeType === 'width' || interactionState.resizeType === 'size' ? 'ew-resize' :
+                       interactionState.resizeType === 'height' || interactionState.resizeType === 'position' ? 'ns-resize' : 'nw-resize',
+      };
       
-      document.body.style.cursor = cursor;
+      document.body.style.cursor = cursorMap[interactionState.type] || 'default';
       document.body.style.userSelect = 'none';
     } else {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('mousemove', handleResizeMove);
-      document.removeEventListener('mouseup', handleResizeEnd);
-      document.removeEventListener('mousemove', handleImageResizeMove);
-      document.removeEventListener('mouseup', handleImageResizeEnd);
-      document.removeEventListener('mousemove', handleHoleResizeMove);
-      document.removeEventListener('mouseup', handleHoleResizeEnd);
+      document.removeEventListener('mousemove', handleInteractionMove);
+      document.removeEventListener('mouseup', endInteraction);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
 
-    // 键盘事件
     document.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('mousemove', handleResizeMove);
-      document.removeEventListener('mouseup', handleResizeEnd);
-      document.removeEventListener('mousemove', handleImageResizeMove);
-      document.removeEventListener('mouseup', handleImageResizeEnd);
-      document.removeEventListener('mousemove', handleHoleResizeMove);
-      document.removeEventListener('mouseup', handleHoleResizeEnd);
+      document.removeEventListener('mousemove', handleInteractionMove);
+      document.removeEventListener('mouseup', endInteraction);
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [dragState.isDragging, resizeState.isResizing, imageResizeState.isResizing, holeResizeState.isResizing, handleMouseMove, handleMouseUp, handleResizeMove, handleResizeEnd, handleImageResizeMove, handleImageResizeEnd, handleHoleResizeMove, handleHoleResizeEnd, handleKeyDown]);
+  }, [interactionState, handleInteractionMove, endInteraction, handleKeyDown]);
+
+  // 渲染调整手柄的通用函数
+  const renderResizeHandle = (position, type, color, onMouseDown, title) => {
+    const isCorner = type === 'corner';
+    const isVertical = position.includes('bottom') || position.includes('top');
+    const isHorizontal = position.includes('left') || position.includes('right');
+    
+    const baseStyle = {
+      position: 'absolute',
+      backgroundColor: color,
+      borderRadius: isCorner ? 2 : position.includes('right') || position.includes('left') ? 5 : 3,
+      opacity: 0.8,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: 'white',
+      fontSize: isCorner ? '6px' : '8px',
+      transition: 'opacity 0.2s',
+      cursor: isCorner ? 'nw-resize' : isHorizontal ? 'ew-resize' : 'ns-resize',
+      zIndex: 10,
+    };
+
+    const positionStyle = {};
+    if (position.includes('right')) positionStyle.right = -5;
+    if (position.includes('left')) positionStyle.left = -5;
+    if (position.includes('bottom')) positionStyle.bottom = -5;
+    if (position.includes('top')) positionStyle.top = -5;
+    if (position.includes('center-x')) {
+      positionStyle.left = '50%';
+      positionStyle.transform = 'translateX(-50%)';
+    }
+    if (position.includes('center-y')) {
+      positionStyle.top = '50%';
+      positionStyle.transform = 'translateY(-50%)';
+    }
+
+    const sizeStyle = isCorner ? 
+      { width: 12, height: 12 } : 
+      isVertical ? { width: 20, height: 8 } : { width: 8, height: 20 };
+
+    const icon = isCorner ? '⤡' : isHorizontal ? '↔' : '↕';
+
+    return (
+      <div
+        style={{ ...baseStyle, ...positionStyle, ...sizeStyle }}
+        onMouseDown={onMouseDown}
+        onMouseEnter={(e) => e.target.style.opacity = 1}
+        onMouseLeave={(e) => e.target.style.opacity = 0.8}
+        title={title}
+      >
+        {icon}
+      </div>
+    );
+  };
 
   // 渲染工牌预览
   const renderBadgePreview = () => {
@@ -568,7 +409,7 @@ const BadgeDesigner = () => {
             margin: '20px auto',
             overflow: 'visible',
             boxShadow: selectedElement === 'badge' ? '0 0 8px rgba(24, 144, 255, 0.3)' : '0 4px 12px rgba(0,0,0,0.1)',
-            cursor: dragState.isDragging ? 'grabbing' : 'pointer',
+            cursor: interactionState.type === 'drag' ? 'grabbing' : 'pointer',
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
@@ -576,187 +417,54 @@ const BadgeDesigner = () => {
             }
           }}
         >
-        {/* 穿孔 */}
-        {holeSettings.enabled && (
-          <div
-            style={{
-              position: 'absolute',
-              top: holeSettings.offsetY * scale,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: holeSettings.shape === 'rectangle' ? holeSettings.width * scale : holeSettings.size * scale,
-              height: holeSettings.shape === 'rectangle' ? holeSettings.height * scale : holeSettings.size * scale,
-              backgroundColor: 'white',
-              border: selectedElement === 'hole' ? '2px solid #52c41a' : '2px solid #999',
-              borderRadius: holeSettings.shape === 'circle' ? '50%' : 
-                          holeSettings.shape === 'oval' ? '50%' : 
-                          holeSettings.shape === 'rectangle' ? holeSettings.borderRadius * scale : '2px',
-              cursor: 'pointer',
-              boxShadow: selectedElement === 'hole' ? '0 0 8px rgba(82, 196, 26, 0.3)' : 'none',
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedElement('hole');
-            }}
-          >
-            {/* 穿孔调整手柄 - 只在选中时显示 */}
-            {selectedElement === 'hole' && (
-              <>
-                {holeSettings.shape === 'rectangle' ? (
-                  <>
-                    {/* 右侧宽度调整手柄 */}
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: '50%',
-                        right: -5,
-                        transform: 'translateY(-50%)',
-                        width: 8,
-                        height: 16,
-                        backgroundColor: '#52c41a',
-                        borderRadius: 2,
-                        cursor: 'ew-resize',
-                        opacity: 0.8,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'white',
-                        fontSize: '6px',
-                        transition: 'opacity 0.2s',
-                        zIndex: 10,
-                      }}
-                      onMouseDown={(e) => handleHoleResizeStart(e, 'width')}
-                      onMouseEnter={(e) => e.target.style.opacity = 1}
-                      onMouseLeave={(e) => e.target.style.opacity = 0.8}
-                      title="拖拽调整宽度"
-                    >
-                      ↔
-                    </div>
-                    
-                    {/* 底部高度调整手柄 */}
-                    <div
-                      style={{
-                        position: 'absolute',
-                        bottom: -5,
-                        left: '50%',
-                        transform: 'translateX(-50%)',
-                        width: 16,
-                        height: 8,
-                        backgroundColor: '#52c41a',
-                        borderRadius: 2,
-                        cursor: 'ns-resize',
-                        opacity: 0.8,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'white',
-                        fontSize: '6px',
-                        transition: 'opacity 0.2s',
-                        zIndex: 10,
-                      }}
-                      onMouseDown={(e) => handleHoleResizeStart(e, 'height')}
-                      onMouseEnter={(e) => e.target.style.opacity = 1}
-                      onMouseLeave={(e) => e.target.style.opacity = 0.8}
-                      title="拖拽调整高度"
-                    >
-                      ↕
-                    </div>
-                    
-                    {/* 右下角双向调整手柄 */}
-                    <div
-                      style={{
-                        position: 'absolute',
-                        right: -5,
-                        bottom: -5,
-                        width: 10,
-                        height: 10,
-                        backgroundColor: '#52c41a',
-                        borderRadius: 2,
-                        cursor: 'nw-resize',
-                        opacity: 0.8,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'white',
-                        fontSize: '6px',
-                        transition: 'opacity 0.2s',
-                        zIndex: 10,
-                      }}
-                      onMouseDown={(e) => handleHoleResizeStart(e, 'corner')}
-                      onMouseEnter={(e) => e.target.style.opacity = 1}
-                      onMouseLeave={(e) => e.target.style.opacity = 0.8}
-                      title="拖拽同时调整宽度和高度"
-                    >
-                      ⤡
-                    </div>
-                  </>
-                ) : (
-                  /* 圆形和椭圆的尺寸调整手柄 */
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '50%',
-                      right: -5,
-                      transform: 'translateY(-50%)',
-                      width: 8,
-                      height: 16,
-                      backgroundColor: '#52c41a',
-                      borderRadius: 2,
-                      cursor: 'ew-resize',
-                      opacity: 0.8,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontSize: '6px',
-                      transition: 'opacity 0.2s',
-                      zIndex: 10,
-                    }}
-                    onMouseDown={(e) => handleHoleResizeStart(e, 'size')}
-                    onMouseEnter={(e) => e.target.style.opacity = 1}
-                    onMouseLeave={(e) => e.target.style.opacity = 0.8}
-                    title="拖拽调整大小"
-                  >
-                    ↔
-                  </div>
-                )}
-                
-                {/* 垂直位置调整手柄 */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: -15,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    width: 16,
-                    height: 8,
-                    backgroundColor: '#fa8c16',
-                    borderRadius: 2,
-                    cursor: 'ns-resize',
-                    opacity: 0.8,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'white',
-                    fontSize: '6px',
-                    transition: 'opacity 0.2s',
-                    zIndex: 10,
-                  }}
-                  onMouseDown={(e) => handleHoleResizeStart(e, 'position')}
-                  onMouseEnter={(e) => e.target.style.opacity = 1}
-                  onMouseLeave={(e) => e.target.style.opacity = 0.8}
-                  title="拖拽调整垂直位置"
-                >
-                  ↕
-                </div>
-              </>
-            )}
-          </div>
-        )}
+          {/* 穿孔 */}
+          {holeSettings.enabled && (
+            <div
+              style={{
+                position: 'absolute',
+                top: holeSettings.offsetY * scale,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: holeSettings.shape === 'rectangle' ? holeSettings.width * scale : holeSettings.size * scale,
+                height: holeSettings.shape === 'rectangle' ? holeSettings.height * scale : holeSettings.size * scale,
+                backgroundColor: 'white',
+                border: selectedElement === 'hole' ? '2px solid #52c41a' : '2px solid #999',
+                borderRadius: holeSettings.shape === 'circle' ? '50%' : 
+                            holeSettings.shape === 'oval' ? '50%' : 
+                            holeSettings.shape === 'rectangle' ? holeSettings.borderRadius * scale : '2px',
+                cursor: 'pointer',
+                boxShadow: selectedElement === 'hole' ? '0 0 8px rgba(82, 196, 26, 0.3)' : 'none',
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedElement('hole');
+              }}
+            >
+              {/* 穿孔调整手柄 */}
+              {selectedElement === 'hole' && (
+                <>
+                  {holeSettings.shape === 'rectangle' ? (
+                    <>
+                      {renderResizeHandle('right center-y', 'width', '#52c41a', 
+                        (e) => startInteraction(e, 'resize-hole', 'hole', 'width'), '拖拽调整宽度')}
+                      {renderResizeHandle('bottom center-x', 'height', '#52c41a',
+                        (e) => startInteraction(e, 'resize-hole', 'hole', 'height'), '拖拽调整高度')}
+                      {renderResizeHandle('right bottom', 'corner', '#52c41a',
+                        (e) => startInteraction(e, 'resize-hole', 'hole', 'corner'), '拖拽同时调整宽度和高度')}
+                    </>
+                  ) : (
+                    renderResizeHandle('right center-y', 'size', '#52c41a',
+                      (e) => startInteraction(e, 'resize-hole', 'hole', 'size'), '拖拽调整大小')
+                  )}
+                  {renderResizeHandle('top center-x', 'position', '#fa8c16',
+                    (e) => startInteraction(e, 'resize-hole', 'hole', 'position'), '拖拽调整垂直位置')}
+                </>
+              )}
+            </div>
+          )}
 
-        {/* 图片 */}
-        {imageSettings.src && (
-          <div style={{ position: 'relative', display: 'inline-block' }}>
+          {/* 图片 */}
+          {imageSettings.src && (
             <div
               style={{
                 position: 'absolute',
@@ -764,13 +472,13 @@ const BadgeDesigner = () => {
                 top: imageSettings.y * scale,
                 width: imageSettings.width * scale,
                 height: imageSettings.height * scale,
-                cursor: dragState.isDragging && dragState.dragType === 'image' ? 'grabbing' : 'grab',
+                cursor: interactionState.type === 'drag' && interactionState.element === 'image' ? 'grabbing' : 'grab',
                 border: selectedElement === 'image' ? '2px solid #1890ff' : 
-                       (dragState.dragType === 'image' && dragState.isDragging ? '2px dashed #1890ff' : '2px solid transparent'),
+                       (interactionState.element === 'image' && interactionState.type === 'drag' ? '2px dashed #1890ff' : '2px solid transparent'),
                 borderRadius: '4px',
                 boxShadow: selectedElement === 'image' ? '0 0 8px rgba(24, 144, 255, 0.3)' : 'none',
               }}
-              onMouseDown={(e) => handleMouseDown(e, 'image')}
+              onMouseDown={(e) => startInteraction(e, 'drag', 'image')}
               onDoubleClick={(e) => handleDoubleClick(e, 'image')}
             >
               <img
@@ -786,91 +494,15 @@ const BadgeDesigner = () => {
                 }}
               />
               
-              {/* 图片尺寸调整手柄 - 只在选中时显示 */}
+              {/* 图片调整手柄 */}
               {selectedElement === 'image' && (
                 <>
-                  {/* 右侧宽度调整手柄 */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      right: -5,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      width: 10,
-                      height: 20,
-                      backgroundColor: '#1890ff',
-                      borderRadius: 3,
-                      cursor: 'ew-resize',
-                      opacity: 0.8,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontSize: '6px',
-                      transition: 'opacity 0.2s',
-                    }}
-                    onMouseDown={(e) => handleImageResizeStart(e, 'width')}
-                    onMouseEnter={(e) => e.target.style.opacity = 1}
-                    onMouseLeave={(e) => e.target.style.opacity = 0.8}
-                    title="拖拽调整宽度"
-                  >
-                    ↔
-                  </div>
-                  
-                  {/* 底部高度调整手柄 */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: -5,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      width: 20,
-                      height: 10,
-                      backgroundColor: '#1890ff',
-                      borderRadius: 3,
-                      cursor: 'ns-resize',
-                      opacity: 0.8,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontSize: '6px',
-                      transition: 'opacity 0.2s',
-                    }}
-                    onMouseDown={(e) => handleImageResizeStart(e, 'height')}
-                    onMouseEnter={(e) => e.target.style.opacity = 1}
-                    onMouseLeave={(e) => e.target.style.opacity = 0.8}
-                    title="拖拽调整高度"
-                  >
-                    ↕
-                  </div>
-                  
-                  {/* 右下角双向调整手柄 */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      right: -5,
-                      bottom: -5,
-                      width: 12,
-                      height: 12,
-                      backgroundColor: '#1890ff',
-                      borderRadius: 2,
-                      cursor: 'nw-resize',
-                      opacity: 0.8,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontSize: '6px',
-                      transition: 'opacity 0.2s',
-                    }}
-                    onMouseDown={(e) => handleImageResizeStart(e, 'corner')}
-                    onMouseEnter={(e) => e.target.style.opacity = 1}
-                    onMouseLeave={(e) => e.target.style.opacity = 0.8}
-                    title="拖拽同时调整宽度和高度"
-                  >
-                    ⤡
-                  </div>
+                  {renderResizeHandle('right center-y', 'width', '#1890ff',
+                    (e) => startInteraction(e, 'resize-image', 'image', 'width'), '拖拽调整宽度')}
+                  {renderResizeHandle('bottom center-x', 'height', '#1890ff',
+                    (e) => startInteraction(e, 'resize-image', 'image', 'height'), '拖拽调整高度')}
+                  {renderResizeHandle('right bottom', 'corner', '#1890ff',
+                    (e) => startInteraction(e, 'resize-image', 'image', 'corner'), '拖拽同时调整宽度和高度')}
                 </>
               )}
               
@@ -887,7 +519,7 @@ const BadgeDesigner = () => {
                   borderRadius: '3px',
                   fontSize: '10px',
                   whiteSpace: 'nowrap',
-                  opacity: dragState.dragType === 'image' && dragState.isDragging ? 1 : 0,
+                  opacity: interactionState.element === 'image' && interactionState.type === 'drag' ? 1 : 0,
                   transition: 'opacity 0.2s',
                   pointerEvents: 'none',
                 }}
@@ -895,149 +527,72 @@ const BadgeDesigner = () => {
                 拖拽调整位置
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* 文字 */}
-        <div
-          style={{
-            position: 'absolute',
-            left: textSettings.x * scale,
-            top: textSettings.y * scale,
-            cursor: dragState.isDragging && dragState.dragType === 'text' ? 'grabbing' : 'grab',
-            border: selectedElement === 'text' ? '2px solid #1890ff' :
-                   (dragState.dragType === 'text' && dragState.isDragging ? '2px dashed #1890ff' : '2px solid transparent'),
-            borderRadius: '4px',
-            padding: '2px',
-            minWidth: '20px',
-            minHeight: '20px',
-            boxShadow: selectedElement === 'text' ? '0 0 8px rgba(24, 144, 255, 0.3)' : 'none',
-          }}
-          onMouseDown={(e) => handleMouseDown(e, 'text')}
-          onDoubleClick={(e) => handleDoubleClick(e, 'text')}
-        >
-          <div
-            style={{
-              fontSize: textSettings.fontSize * scale * 2.5, // 调整转换比例
-              color: textSettings.color,
-              fontFamily: textSettings.fontFamily,
-              lineHeight: textSettings.lineHeight,
-              whiteSpace: 'pre-line',
-              maxWidth: (badgeSettings.width - textSettings.x - 5) * scale,
-              textAlign: 'center',
-              pointerEvents: 'none',
-            }}
-          >
-            {textSettings.content}
-          </div>
-          {/* 拖拽提示 */}
+          {/* 文字 */}
           <div
             style={{
               position: 'absolute',
-              top: '-25px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              background: 'rgba(0,0,0,0.7)',
-              color: 'white',
-              padding: '2px 6px',
-              borderRadius: '3px',
-              fontSize: '10px',
-              whiteSpace: 'nowrap',
-              opacity: dragState.dragType === 'text' && dragState.isDragging ? 1 : 0,
-              transition: 'opacity 0.2s',
-              pointerEvents: 'none',
+              left: textSettings.x * scale,
+              top: textSettings.y * scale,
+              cursor: interactionState.type === 'drag' && interactionState.element === 'text' ? 'grabbing' : 'grab',
+              border: selectedElement === 'text' ? '2px solid #1890ff' :
+                     (interactionState.element === 'text' && interactionState.type === 'drag' ? '2px dashed #1890ff' : '2px solid transparent'),
+              borderRadius: '4px',
+              padding: '2px',
+              minWidth: '20px',
+              minHeight: '20px',
+              boxShadow: selectedElement === 'text' ? '0 0 8px rgba(24, 144, 255, 0.3)' : 'none',
             }}
+            onMouseDown={(e) => startInteraction(e, 'drag', 'text')}
+            onDoubleClick={(e) => handleDoubleClick(e, 'text')}
           >
-            拖拽调整位置
-          </div>
-        </div>
-        </div>
-        
-        {/* 工牌调整手柄 - 只在选中工牌时显示 */}
-        {selectedElement === 'badge' && (
-          <>
-            {/* 右侧宽度调整手柄 */}
             <div
               style={{
-                position: 'absolute',
-                right: -5,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: 10,
-                height: 40,
-                backgroundColor: '#1890ff',
-                borderRadius: 5,
-                cursor: 'ew-resize',
-                opacity: 0.7,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-                fontSize: '8px',
-                transition: 'opacity 0.2s',
+                fontSize: textSettings.fontSize * scale * 2.5,
+                color: textSettings.color,
+                fontFamily: textSettings.fontFamily,
+                lineHeight: textSettings.lineHeight,
+                whiteSpace: 'pre-line',
+                maxWidth: (badgeSettings.width - textSettings.x - 5) * scale,
+                textAlign: 'center',
+                pointerEvents: 'none',
               }}
-              onMouseDown={(e) => handleResizeStart(e, 'width')}
-              onMouseEnter={(e) => e.target.style.opacity = 1}
-              onMouseLeave={(e) => e.target.style.opacity = 0.7}
-              title="拖拽调整宽度"
             >
-              ↔
+              {textSettings.content}
             </div>
-            
-            {/* 底部高度调整手柄 */}
+            {/* 拖拽提示 */}
             <div
               style={{
                 position: 'absolute',
-                bottom: -5,
+                top: '-25px',
                 left: '50%',
                 transform: 'translateX(-50%)',
-                width: 40,
-                height: 10,
-                backgroundColor: '#1890ff',
-                borderRadius: 5,
-                cursor: 'ns-resize',
-                opacity: 0.7,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                background: 'rgba(0,0,0,0.7)',
                 color: 'white',
-                fontSize: '8px',
+                padding: '2px 6px',
+                borderRadius: '3px',
+                fontSize: '10px',
+                whiteSpace: 'nowrap',
+                opacity: interactionState.element === 'text' && interactionState.type === 'drag' ? 1 : 0,
                 transition: 'opacity 0.2s',
+                pointerEvents: 'none',
               }}
-              onMouseDown={(e) => handleResizeStart(e, 'height')}
-              onMouseEnter={(e) => e.target.style.opacity = 1}
-              onMouseLeave={(e) => e.target.style.opacity = 0.7}
-              title="拖拽调整高度"
             >
-              ↕
+              拖拽调整位置
             </div>
-            
-            {/* 右下角双向调整手柄 */}
-            <div
-              style={{
-                position: 'absolute',
-                right: -5,
-                bottom: -5,
-                width: 15,
-                height: 15,
-                backgroundColor: '#1890ff',
-                borderRadius: 3,
-                cursor: 'nw-resize',
-                opacity: 0.7,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-                fontSize: '8px',
-                transition: 'opacity 0.2s',
-              }}
-              onMouseDown={(e) => handleResizeStart(e, 'corner')}
-              onMouseEnter={(e) => e.target.style.opacity = 1}
-              onMouseLeave={(e) => e.target.style.opacity = 0.7}
-              title="拖拽同时调整宽度和高度"
-            >
-              ⤡
-            </div>
+          </div>
+        </div>
+        
+        {/* 工牌调整手柄 */}
+        {selectedElement === 'badge' && (
+          <>
+            {renderResizeHandle('right center-y', 'width', '#1890ff',
+              (e) => startInteraction(e, 'resize-badge', 'badge', 'width'), '拖拽调整宽度')}
+            {renderResizeHandle('bottom center-x', 'height', '#1890ff',
+              (e) => startInteraction(e, 'resize-badge', 'badge', 'height'), '拖拽调整高度')}
+            {renderResizeHandle('right bottom', 'corner', '#1890ff',
+              (e) => startInteraction(e, 'resize-badge', 'badge', 'corner'), '拖拽同时调整宽度和高度')}
           </>
         )}
       </div>
@@ -1083,6 +638,7 @@ const BadgeDesigner = () => {
       y: 68,
       lineHeight: 1.4,
     });
+    setSelectedElement(null);
     message.success('设计已重置');
   };
 
@@ -1315,8 +871,6 @@ const BadgeDesigner = () => {
                 )}
               </Space>
             </Card>
-
-
           </div>
         </Sider>
 
@@ -1382,17 +936,17 @@ const BadgeDesigner = () => {
                       <Select.Option value="Arial">Arial</Select.Option>
                     </Select>
                   </div>
-                                      <div>
-                      <Text>字号: {textSettings.fontSize}mm</Text>
-                      <Slider
-                        min={1}
-                        max={4}
-                        step={0.25}
-                        value={textSettings.fontSize}
-                        onChange={(value) => setTextSettings(prev => ({ ...prev, fontSize: value }))}
-                        size="small"
-                      />
-                    </div>
+                  <div>
+                    <Text>字号: {textSettings.fontSize}mm</Text>
+                    <Slider
+                      min={1}
+                      max={4}
+                      step={0.25}
+                      value={textSettings.fontSize}
+                      onChange={(value) => setTextSettings(prev => ({ ...prev, fontSize: value }))}
+                      size="small"
+                    />
+                  </div>
                   <div>
                     <Text>颜色</Text>
                     <ColorPicker
