@@ -29,19 +29,56 @@ const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 const BadgeDesigner = () => {
-  // 统一尺寸单位转换函数
-  const mmToPx = (mm) => mm * 3.78; // 1mm ≈ 3.78px (96 DPI)
-  const pxToMm = (px) => px / 3.78;
-  
-  // 预览缩放比例
-  const PREVIEW_SCALE = 4;
+  // 统一尺寸配置常量
+  const UNIT_CONFIG = {
+    // 单位转换
+    mmToPx: (mm) => mm * 3.78, // 1mm ≈ 3.78px (96 DPI)
+    pxToMm: (px) => px / 3.78,
+    
+    // 预览缩放
+    PREVIEW_SCALE: 4,
+    
+    // 尺寸限制 (mm)
+    BADGE: {
+      WIDTH: { min: 40, max: 120, step: 1 },
+      HEIGHT: { min: 30, max: 200, step: 1 },
+      BORDER_RADIUS: { min: 0, max: 20, step: 0.5 }
+    },
+    HOLE: {
+      SIZE: { min: 3, max: 15, step: 0.5 },
+      WIDTH: { min: 3, max: 20, step: 0.5 },
+      HEIGHT: { min: 2, max: 15, step: 0.5 },
+      OFFSET_Y: { min: 1, max: 20, step: 0.5 },
+      BORDER_RADIUS: { min: 0, max: 10, step: 0.5 }
+    },
+    IMAGE: {
+      SIZE: { min: 10, max: 80, step: 1 },
+      POSITION: { min: 0, step: 1 },
+      OPACITY: { min: 0, max: 1, step: 0.1 }
+    },
+    TEXT: {
+      FONT_SIZE: { min: 2, max: 8, step: 0.5 },
+      POSITION: { min: 0, step: 1 },
+      LINE_HEIGHT: { min: 1, max: 2, step: 0.1 }
+    }
+  };
+
+  // 数值格式化函数
+  const formatSize = (value, precision = 1) => {
+    return Math.round(value * (10 ** precision)) / (10 ** precision);
+  };
+
+  // 尺寸验证函数
+  const validateSize = (value, config) => {
+    return Math.max(config.min, Math.min(config.max, formatSize(value, 1)));
+  };
 
   // 工牌设置 - 统一使用毫米(mm)
   const [badgeSettings, setBadgeSettings] = useState({
     width: 63,        // mm
     height: 90,       // mm
     backgroundColor: '#ffffff',
-    borderRadius: 5,  // mm (原来是px，现在统一为mm)
+    borderRadius: 5,  // mm
   });
 
   // 穿孔设置 - 统一使用毫米(mm)
@@ -49,7 +86,7 @@ const BadgeDesigner = () => {
     enabled: false,
     shape: 'circle',
     size: 6,          // mm
-    offsetY: 1,       // mm (允许更靠近顶部)
+    offsetY: 1,       // mm
     width: 6,         // mm
     height: 4,        // mm
     borderRadius: 2,  // mm
@@ -68,7 +105,7 @@ const BadgeDesigner = () => {
   // 文字设置 - 统一使用毫米(mm)
   const [textSettings, setTextSettings] = useState({
     content: '张三\n技术部',
-    fontSize: 4,      // mm (简化字体大小计算)
+    fontSize: 4,      // mm
     color: '#000000',
     fontFamily: 'Microsoft YaHei',
     x: 26,            // mm
@@ -145,8 +182,8 @@ const BadgeDesigner = () => {
   const handleInteractionMove = useCallback((e) => {
     if (!interactionState.type) return;
     
-    const deltaX = (e.clientX - interactionState.startX) / PREVIEW_SCALE;
-    const deltaY = (e.clientY - interactionState.startY) / PREVIEW_SCALE;
+    const deltaX = (e.clientX - interactionState.startX) / UNIT_CONFIG.PREVIEW_SCALE;
+    const deltaY = (e.clientY - interactionState.startY) / UNIT_CONFIG.PREVIEW_SCALE;
     
     const { type, element, resizeType, startValues } = interactionState;
     
@@ -157,65 +194,56 @@ const BadgeDesigner = () => {
         maxX = badgeSettings.width - imageSettings.width;
         maxY = badgeSettings.height - imageSettings.height;
       } else if (element === 'text') {
-        // 文字可以拖拽到边缘，只需预留很小的空间避免完全贴边
         maxX = badgeSettings.width - 5;
         maxY = badgeSettings.height - 5;
       }
       
-      const newX = Math.max(0, Math.min(maxX, startValues.x + deltaX));
-      const newY = Math.max(0, Math.min(maxY, startValues.y + deltaY));
+      const newX = validateSize(startValues.x + deltaX, { min: 0, max: maxX });
+      const newY = validateSize(startValues.y + deltaY, { min: 0, max: maxY });
       
       if (element === 'image') {
-        setImageSettings(prev => ({ ...prev, x: Math.round(newX), y: Math.round(newY) }));
+        setImageSettings(prev => ({ ...prev, x: newX, y: newY }));
       } else if (element === 'text') {
-        setTextSettings(prev => ({ ...prev, x: Math.round(newX), y: Math.round(newY) }));
+        setTextSettings(prev => ({ ...prev, x: newX, y: newY }));
       }
     } else if (type === 'resize-badge') {
       let newWidth = startValues.width;
       let newHeight = startValues.height;
       
       if (resizeType === 'width' || resizeType === 'corner') {
-        newWidth = Math.max(50, Math.min(120, startValues.width + deltaX));
+        newWidth = validateSize(startValues.width + deltaX, UNIT_CONFIG.BADGE.WIDTH);
       }
       if (resizeType === 'height' || resizeType === 'corner') {
-        newHeight = Math.max(30, Math.min(200, startValues.height + deltaY));
+        newHeight = validateSize(startValues.height + deltaY, UNIT_CONFIG.BADGE.HEIGHT);
       }
       
-      setBadgeSettings(prev => ({
-        ...prev,
-        width: Math.round(newWidth),
-        height: Math.round(newHeight)
-      }));
+      setBadgeSettings(prev => ({ ...prev, width: newWidth, height: newHeight }));
     } else if (type === 'resize-image') {
       let newWidth = startValues.width;
       let newHeight = startValues.height;
       
       if (resizeType === 'width' || resizeType === 'corner') {
-        newWidth = Math.max(10, Math.min(80, startValues.width + deltaX));
+        newWidth = validateSize(startValues.width + deltaX, UNIT_CONFIG.IMAGE.SIZE);
       }
       if (resizeType === 'height' || resizeType === 'corner') {
-        newHeight = Math.max(10, Math.min(80, startValues.height + deltaY));
+        newHeight = validateSize(startValues.height + deltaY, UNIT_CONFIG.IMAGE.SIZE);
       }
       
-      setImageSettings(prev => ({
-        ...prev,
-        width: Math.round(newWidth),
-        height: Math.round(newHeight)
-      }));
+      setImageSettings(prev => ({ ...prev, width: newWidth, height: newHeight }));
     } else if (type === 'resize-hole') {
       if (resizeType === 'size') {
-        const newSize = Math.max(3, Math.min(15, startValues.size + deltaX));
-        setHoleSettings(prev => ({ ...prev, size: Math.round(newSize * 2) / 2 }));
+        const newSize = validateSize(startValues.size + deltaX, UNIT_CONFIG.HOLE.SIZE);
+        setHoleSettings(prev => ({ ...prev, size: newSize }));
       } else if (resizeType === 'width' || resizeType === 'corner') {
-        const newWidth = Math.max(3, Math.min(20, startValues.width + deltaX));
-        setHoleSettings(prev => ({ ...prev, width: Math.round(newWidth * 2) / 2 }));
+        const newWidth = validateSize(startValues.width + deltaX, UNIT_CONFIG.HOLE.WIDTH);
+        setHoleSettings(prev => ({ ...prev, width: newWidth }));
       }
       if (resizeType === 'height' || resizeType === 'corner') {
-        const newHeight = Math.max(2, Math.min(15, startValues.height + deltaY));
-        setHoleSettings(prev => ({ ...prev, height: Math.round(newHeight * 2) / 2 }));
+        const newHeight = validateSize(startValues.height + deltaY, UNIT_CONFIG.HOLE.HEIGHT);
+        setHoleSettings(prev => ({ ...prev, height: newHeight }));
       } else if (resizeType === 'position') {
-        const newOffsetY = Math.max(1, Math.min(20, startValues.offsetY + deltaY));
-        setHoleSettings(prev => ({ ...prev, offsetY: Math.round(newOffsetY * 2) / 2 }));
+        const newOffsetY = validateSize(startValues.offsetY + deltaY, UNIT_CONFIG.HOLE.OFFSET_Y);
+        setHoleSettings(prev => ({ ...prev, offsetY: newOffsetY }));
       }
     }
   }, [interactionState, badgeSettings, imageSettings]);
@@ -251,9 +279,15 @@ const BadgeDesigner = () => {
       case 'ArrowLeft':
         e.preventDefault();
         if (selectedElement === 'image') {
-          setImageSettings(prev => ({ ...prev, x: Math.max(0, prev.x - step) }));
+          setImageSettings(prev => ({ 
+            ...prev, 
+            x: validateSize(prev.x - step, { min: 0, max: badgeSettings.width - prev.width })
+          }));
         } else if (selectedElement === 'text') {
-          setTextSettings(prev => ({ ...prev, x: Math.max(0, prev.x - step) }));
+          setTextSettings(prev => ({ 
+            ...prev, 
+            x: validateSize(prev.x - step, { min: 0, max: badgeSettings.width - 5 })
+          }));
         }
         break;
       case 'ArrowRight':
@@ -261,21 +295,27 @@ const BadgeDesigner = () => {
         if (selectedElement === 'image') {
           setImageSettings(prev => ({
             ...prev,
-            x: Math.min(badgeSettings.width - prev.width, prev.x + step)
+            x: validateSize(prev.x + step, { min: 0, max: badgeSettings.width - prev.width })
           }));
         } else if (selectedElement === 'text') {
           setTextSettings(prev => ({
             ...prev,
-            x: Math.min(badgeSettings.width - 5, prev.x + step)
+            x: validateSize(prev.x + step, { min: 0, max: badgeSettings.width - 5 })
           }));
         }
         break;
       case 'ArrowUp':
         e.preventDefault();
         if (selectedElement === 'image') {
-          setImageSettings(prev => ({ ...prev, y: Math.max(0, prev.y - step) }));
+          setImageSettings(prev => ({ 
+            ...prev, 
+            y: validateSize(prev.y - step, { min: 0, max: badgeSettings.height - prev.height })
+          }));
         } else if (selectedElement === 'text') {
-          setTextSettings(prev => ({ ...prev, y: Math.max(0, prev.y - step) }));
+          setTextSettings(prev => ({ 
+            ...prev, 
+            y: validateSize(prev.y - step, { min: 0, max: badgeSettings.height - 5 })
+          }));
         }
         break;
       case 'ArrowDown':
@@ -283,12 +323,12 @@ const BadgeDesigner = () => {
         if (selectedElement === 'image') {
           setImageSettings(prev => ({
             ...prev,
-            y: Math.min(badgeSettings.height - prev.height, prev.y + step)
+            y: validateSize(prev.y + step, { min: 0, max: badgeSettings.height - prev.height })
           }));
         } else if (selectedElement === 'text') {
           setTextSettings(prev => ({
             ...prev,
-            y: Math.min(badgeSettings.height - 5, prev.y + step)
+            y: validateSize(prev.y + step, { min: 0, max: badgeSettings.height - 5 })
           }));
         }
         break;
@@ -406,8 +446,8 @@ const BadgeDesigner = () => {
 
   // 渲染工牌预览
   const renderBadgePreview = () => {
-    const badgeWidth = badgeSettings.width * PREVIEW_SCALE;
-    const badgeHeight = badgeSettings.height * PREVIEW_SCALE;
+    const badgeWidth = badgeSettings.width * UNIT_CONFIG.PREVIEW_SCALE;
+    const badgeHeight = badgeSettings.height * UNIT_CONFIG.PREVIEW_SCALE;
 
     return (
       <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -417,7 +457,7 @@ const BadgeDesigner = () => {
             width: badgeWidth,
             height: badgeHeight,
             backgroundColor: badgeSettings.backgroundColor,
-            borderRadius: badgeSettings.borderRadius * PREVIEW_SCALE, // 统一使用mm单位
+            borderRadius: badgeSettings.borderRadius * UNIT_CONFIG.PREVIEW_SCALE,
             position: 'relative',
             border: selectedElement === 'badge' ? '2px solid #1890ff' : '1px solid #d9d9d9',
             margin: '20px auto',
@@ -436,16 +476,16 @@ const BadgeDesigner = () => {
             <div
               style={{
                 position: 'absolute',
-                top: holeSettings.offsetY * PREVIEW_SCALE,
+                top: holeSettings.offsetY * UNIT_CONFIG.PREVIEW_SCALE,
                 left: '50%',
                 transform: 'translateX(-50%)',
-                width: holeSettings.shape === 'rectangle' ? holeSettings.width * PREVIEW_SCALE : holeSettings.size * PREVIEW_SCALE,
-                height: holeSettings.shape === 'rectangle' ? holeSettings.height * PREVIEW_SCALE : holeSettings.size * PREVIEW_SCALE,
+                width: holeSettings.shape === 'rectangle' ? holeSettings.width * UNIT_CONFIG.PREVIEW_SCALE : holeSettings.size * UNIT_CONFIG.PREVIEW_SCALE,
+                height: holeSettings.shape === 'rectangle' ? holeSettings.height * UNIT_CONFIG.PREVIEW_SCALE : holeSettings.size * UNIT_CONFIG.PREVIEW_SCALE,
                 backgroundColor: 'white',
                 border: selectedElement === 'hole' ? '2px solid #52c41a' : '2px solid #999',
                 borderRadius: holeSettings.shape === 'circle' ? '50%' : 
                             holeSettings.shape === 'oval' ? '50%' : 
-                            holeSettings.shape === 'rectangle' ? holeSettings.borderRadius * PREVIEW_SCALE + 'px' : '2px',
+                            holeSettings.shape === 'rectangle' ? holeSettings.borderRadius * UNIT_CONFIG.PREVIEW_SCALE + 'px' : '2px',
                 cursor: 'pointer',
                 boxShadow: selectedElement === 'hole' ? '0 0 8px rgba(82, 196, 26, 0.3)' : 'none',
               }}
@@ -482,10 +522,10 @@ const BadgeDesigner = () => {
             <div
               style={{
                 position: 'absolute',
-                left: imageSettings.x * PREVIEW_SCALE,
-                top: imageSettings.y * PREVIEW_SCALE,
-                width: imageSettings.width * PREVIEW_SCALE,
-                height: imageSettings.height * PREVIEW_SCALE,
+                left: imageSettings.x * UNIT_CONFIG.PREVIEW_SCALE,
+                top: imageSettings.y * UNIT_CONFIG.PREVIEW_SCALE,
+                width: imageSettings.width * UNIT_CONFIG.PREVIEW_SCALE,
+                height: imageSettings.height * UNIT_CONFIG.PREVIEW_SCALE,
                 cursor: interactionState.type === 'drag' && interactionState.element === 'image' ? 'grabbing' : 'grab',
                 border: selectedElement === 'image' ? '2px solid #1890ff' : 
                        (interactionState.element === 'image' && interactionState.type === 'drag' ? '2px dashed #1890ff' : '2px solid transparent'),
@@ -547,8 +587,8 @@ const BadgeDesigner = () => {
           <div
             style={{
               position: 'absolute',
-              left: textSettings.x * PREVIEW_SCALE,
-              top: textSettings.y * PREVIEW_SCALE,
+              left: textSettings.x * UNIT_CONFIG.PREVIEW_SCALE,
+              top: textSettings.y * UNIT_CONFIG.PREVIEW_SCALE,
               cursor: interactionState.type === 'drag' && interactionState.element === 'text' ? 'grabbing' : 'grab',
               border: selectedElement === 'text' ? '2px solid #1890ff' :
                      (interactionState.element === 'text' && interactionState.type === 'drag' ? '2px dashed #1890ff' : '2px solid transparent'),
@@ -563,12 +603,12 @@ const BadgeDesigner = () => {
           >
             <div
               style={{
-                fontSize: textSettings.fontSize * PREVIEW_SCALE, // 简化字体大小计算，直接使用mm*缩放
+                fontSize: textSettings.fontSize * UNIT_CONFIG.PREVIEW_SCALE,
                 color: textSettings.color,
                 fontFamily: textSettings.fontFamily,
                 lineHeight: textSettings.lineHeight,
                 whiteSpace: 'pre-line',
-                maxWidth: (badgeSettings.width - textSettings.x - 5) * PREVIEW_SCALE,
+                maxWidth: (badgeSettings.width - textSettings.x - 5) * UNIT_CONFIG.PREVIEW_SCALE,
                 textAlign: 'center',
                 pointerEvents: 'none',
               }}
@@ -644,36 +684,36 @@ const BadgeDesigner = () => {
   // 重置设计
   const resetDesign = () => {
     setBadgeSettings({
-      width: 63,
-      height: 90,
+      width: formatSize(63),
+      height: formatSize(90),
       backgroundColor: '#ffffff',
-      borderRadius: 5, // mm
+      borderRadius: formatSize(5),
     });
     setHoleSettings({
       enabled: false,
       shape: 'circle',
-      size: 6,
-      offsetY: 1,
-      width: 6,
-      height: 4,
-      borderRadius: 2,
+      size: formatSize(6),
+      offsetY: formatSize(1),
+      width: formatSize(6),
+      height: formatSize(4),
+      borderRadius: formatSize(2),
     });
     setImageSettings({
       src: null,
-      width: 30,
-      height: 30,
-      x: 17,
-      y: 23,
-      opacity: 1,
+      width: formatSize(30),
+      height: formatSize(30),
+      x: formatSize(17),
+      y: formatSize(23),
+      opacity: formatSize(1, 1),
     });
     setTextSettings({
       content: '张三\n技术部',
-      fontSize: 4,      // mm
+      fontSize: formatSize(4),
       color: '#000000',
       fontFamily: 'Microsoft YaHei',
-      x: 26,
-      y: 68,
-      lineHeight: 1.4,
+      x: formatSize(26),
+      y: formatSize(68),
+      lineHeight: formatSize(1.4, 1),
     });
     setSelectedElement(null);
     message.success('设计已重置');
@@ -705,31 +745,33 @@ const BadgeDesigner = () => {
             <Card title="工牌尺寸" size="small" style={{ marginBottom: 16 }}>
               <Space direction="vertical" style={{ width: '100%' }}>
                 <div>
-                  <Text>宽度: {badgeSettings.width}mm</Text>
+                  <Text>宽度: {formatSize(badgeSettings.width)}mm</Text>
                   <Slider
-                    min={50}
-                    max={120}
+                    min={UNIT_CONFIG.BADGE.WIDTH.min}
+                    max={UNIT_CONFIG.BADGE.WIDTH.max}
+                    step={UNIT_CONFIG.BADGE.WIDTH.step}
                     value={badgeSettings.width}
-                    onChange={(value) => setBadgeSettings(prev => ({ ...prev, width: value }))}
+                    onChange={(value) => setBadgeSettings(prev => ({ ...prev, width: formatSize(value) }))}
                   />
                 </div>
                 <div>
-                  <Text>高度: {badgeSettings.height}mm</Text>
+                  <Text>高度: {formatSize(badgeSettings.height)}mm</Text>
                   <Slider
-                    min={30}
-                    max={200}
+                    min={UNIT_CONFIG.BADGE.HEIGHT.min}
+                    max={UNIT_CONFIG.BADGE.HEIGHT.max}
+                    step={UNIT_CONFIG.BADGE.HEIGHT.step}
                     value={badgeSettings.height}
-                    onChange={(value) => setBadgeSettings(prev => ({ ...prev, height: value }))}
+                    onChange={(value) => setBadgeSettings(prev => ({ ...prev, height: formatSize(value) }))}
                   />
                 </div>
                 <div>
-                  <Text>圆角: {badgeSettings.borderRadius}mm</Text>
+                  <Text>圆角: {formatSize(badgeSettings.borderRadius)}mm</Text>
                   <Slider
-                    min={0}
-                    max={20}
-                    step={0.5}
+                    min={UNIT_CONFIG.BADGE.BORDER_RADIUS.min}
+                    max={UNIT_CONFIG.BADGE.BORDER_RADIUS.max}
+                    step={UNIT_CONFIG.BADGE.BORDER_RADIUS.step}
                     value={badgeSettings.borderRadius}
-                    onChange={(value) => setBadgeSettings(prev => ({ ...prev, borderRadius: value }))}
+                    onChange={(value) => setBadgeSettings(prev => ({ ...prev, borderRadius: formatSize(value) }))}
                   />
                 </div>
                 <div>
@@ -780,54 +822,58 @@ const BadgeDesigner = () => {
                       <>
                         <Row gutter={8}>
                           <Col span={12}>
-                            <Text>宽度: {holeSettings.width}mm</Text>
+                            <Text>宽度: {formatSize(holeSettings.width)}mm</Text>
                             <Slider
-                              min={3}
-                              max={20}
+                              min={UNIT_CONFIG.HOLE.WIDTH.min}
+                              max={UNIT_CONFIG.HOLE.WIDTH.max}
+                              step={UNIT_CONFIG.HOLE.WIDTH.step}
                               value={holeSettings.width}
-                              onChange={(value) => setHoleSettings(prev => ({ ...prev, width: value }))}
+                              onChange={(value) => setHoleSettings(prev => ({ ...prev, width: formatSize(value) }))}
                             />
                           </Col>
                           <Col span={12}>
-                            <Text>高度: {holeSettings.height}mm</Text>
+                            <Text>高度: {formatSize(holeSettings.height)}mm</Text>
                             <Slider
-                              min={2}
-                              max={15}
+                              min={UNIT_CONFIG.HOLE.HEIGHT.min}
+                              max={UNIT_CONFIG.HOLE.HEIGHT.max}
+                              step={UNIT_CONFIG.HOLE.HEIGHT.step}
                               value={holeSettings.height}
-                              onChange={(value) => setHoleSettings(prev => ({ ...prev, height: value }))}
+                              onChange={(value) => setHoleSettings(prev => ({ ...prev, height: formatSize(value) }))}
                             />
                           </Col>
                         </Row>
                         <div>
-                          <Text>倒角: {holeSettings.borderRadius}mm</Text>
+                          <Text>倒角: {formatSize(holeSettings.borderRadius)}mm</Text>
                           <Slider
-                            min={0}
+                            min={UNIT_CONFIG.HOLE.BORDER_RADIUS.min}
                             max={Math.min(holeSettings.width, holeSettings.height) / 2}
-                            step={0.5}
+                            step={UNIT_CONFIG.HOLE.BORDER_RADIUS.step}
                             value={holeSettings.borderRadius}
-                            onChange={(value) => setHoleSettings(prev => ({ ...prev, borderRadius: value }))}
+                            onChange={(value) => setHoleSettings(prev => ({ ...prev, borderRadius: formatSize(value) }))}
                           />
                         </div>
                       </>
                     ) : (
                       <div>
-                        <Text>大小: {holeSettings.size}mm</Text>
+                        <Text>大小: {formatSize(holeSettings.size)}mm</Text>
                         <Slider
-                          min={3}
-                          max={15}
+                          min={UNIT_CONFIG.HOLE.SIZE.min}
+                          max={UNIT_CONFIG.HOLE.SIZE.max}
+                          step={UNIT_CONFIG.HOLE.SIZE.step}
                           value={holeSettings.size}
-                          onChange={(value) => setHoleSettings(prev => ({ ...prev, size: value }))}
+                          onChange={(value) => setHoleSettings(prev => ({ ...prev, size: formatSize(value) }))}
                         />
                       </div>
                     )}
                     
                     <div>
-                      <Text>垂直偏移: {holeSettings.offsetY}mm</Text>
+                      <Text>垂直偏移: {formatSize(holeSettings.offsetY)}mm</Text>
                       <Slider
-                        min={1}
-                        max={20}
+                        min={UNIT_CONFIG.HOLE.OFFSET_Y.min}
+                        max={UNIT_CONFIG.HOLE.OFFSET_Y.max}
+                        step={UNIT_CONFIG.HOLE.OFFSET_Y.step}
                         value={holeSettings.offsetY}
-                        onChange={(value) => setHoleSettings(prev => ({ ...prev, offsetY: value }))}
+                        onChange={(value) => setHoleSettings(prev => ({ ...prev, offsetY: formatSize(value) }))}
                       />
                     </div>
                   </>
@@ -855,21 +901,27 @@ const BadgeDesigner = () => {
                       <Col span={12}>
                         <Text>宽度(mm)</Text>
                         <InputNumber
-                          min={10}
-                          max={80}
+                          min={UNIT_CONFIG.IMAGE.SIZE.min}
+                          max={UNIT_CONFIG.IMAGE.SIZE.max}
+                          step={UNIT_CONFIG.IMAGE.SIZE.step}
                           value={imageSettings.width}
-                          onChange={(value) => setImageSettings(prev => ({ ...prev, width: value }))}
+                          onChange={(value) => setImageSettings(prev => ({ ...prev, width: formatSize(value || 0) }))}
                           style={{ width: '100%' }}
+                          formatter={(value) => `${formatSize(value || 0)}`}
+                          parser={(value) => parseFloat(value) || 0}
                         />
                       </Col>
                       <Col span={12}>
                         <Text>高度(mm)</Text>
                         <InputNumber
-                          min={10}
-                          max={80}
+                          min={UNIT_CONFIG.IMAGE.SIZE.min}
+                          max={UNIT_CONFIG.IMAGE.SIZE.max}
+                          step={UNIT_CONFIG.IMAGE.SIZE.step}
                           value={imageSettings.height}
-                          onChange={(value) => setImageSettings(prev => ({ ...prev, height: value }))}
+                          onChange={(value) => setImageSettings(prev => ({ ...prev, height: formatSize(value || 0) }))}
                           style={{ width: '100%' }}
+                          formatter={(value) => `${formatSize(value || 0)}`}
+                          parser={(value) => parseFloat(value) || 0}
                         />
                       </Col>
                     </Row>
@@ -877,32 +929,38 @@ const BadgeDesigner = () => {
                       <Col span={12}>
                         <Text>X位置(mm)</Text>
                         <InputNumber
-                          min={0}
+                          min={UNIT_CONFIG.IMAGE.POSITION.min}
                           max={badgeSettings.width - 10}
+                          step={UNIT_CONFIG.IMAGE.POSITION.step}
                           value={imageSettings.x}
-                          onChange={(value) => setImageSettings(prev => ({ ...prev, x: value }))}
+                          onChange={(value) => setImageSettings(prev => ({ ...prev, x: formatSize(value || 0) }))}
                           style={{ width: '100%' }}
+                          formatter={(value) => `${formatSize(value || 0)}`}
+                          parser={(value) => parseFloat(value) || 0}
                         />
                       </Col>
                       <Col span={12}>
                         <Text>Y位置(mm)</Text>
                         <InputNumber
-                          min={0}
+                          min={UNIT_CONFIG.IMAGE.POSITION.min}
                           max={badgeSettings.height - 10}
+                          step={UNIT_CONFIG.IMAGE.POSITION.step}
                           value={imageSettings.y}
-                          onChange={(value) => setImageSettings(prev => ({ ...prev, y: value }))}
+                          onChange={(value) => setImageSettings(prev => ({ ...prev, y: formatSize(value || 0) }))}
                           style={{ width: '100%' }}
+                          formatter={(value) => `${formatSize(value || 0)}`}
+                          parser={(value) => parseFloat(value) || 0}
                         />
                       </Col>
                     </Row>
                     <div>
                       <Text>透明度: {Math.round(imageSettings.opacity * 100)}%</Text>
                       <Slider
-                        min={0}
-                        max={1}
-                        step={0.1}
+                        min={UNIT_CONFIG.IMAGE.OPACITY.min}
+                        max={UNIT_CONFIG.IMAGE.OPACITY.max}
+                        step={UNIT_CONFIG.IMAGE.OPACITY.step}
                         value={imageSettings.opacity}
-                        onChange={(value) => setImageSettings(prev => ({ ...prev, opacity: value }))}
+                        onChange={(value) => setImageSettings(prev => ({ ...prev, opacity: formatSize(value, 1) }))}
                       />
                     </div>
                   </>
@@ -937,10 +995,10 @@ const BadgeDesigner = () => {
                 <div style={{ textAlign: 'center' }}>
                   <Space direction="vertical" size="small">
                     <Text type="secondary">
-                      实际尺寸: {badgeSettings.width}mm × {badgeSettings.height}mm
+                      实际尺寸: {formatSize(badgeSettings.width)}mm × {formatSize(badgeSettings.height)}mm
                     </Text>
                     <Text type="secondary" style={{ fontSize: '12px' }}>
-                      📏 所有尺寸单位均为毫米(mm) • 预览放大{PREVIEW_SCALE}倍显示
+                      📏 所有尺寸单位均为毫米(mm) • 预览放大{UNIT_CONFIG.PREVIEW_SCALE}倍显示
                     </Text>
                     <Text type="secondary" style={{ fontSize: '12px' }}>
                       💡 提示：点击选中元素显示调整手柄 • 拖拽调整尺寸和位置 • 方向键微调 • Delete删除 • Esc取消选中
@@ -981,13 +1039,13 @@ const BadgeDesigner = () => {
                     </Select>
                   </div>
                   <div>
-                    <Text>字号: {textSettings.fontSize}mm</Text>
+                    <Text>字号: {formatSize(textSettings.fontSize)}mm</Text>
                     <Slider
-                      min={2}
-                      max={8}
-                      step={0.5}
+                      min={UNIT_CONFIG.TEXT.FONT_SIZE.min}
+                      max={UNIT_CONFIG.TEXT.FONT_SIZE.max}
+                      step={UNIT_CONFIG.TEXT.FONT_SIZE.step}
                       value={textSettings.fontSize}
-                      onChange={(value) => setTextSettings(prev => ({ ...prev, fontSize: value }))}
+                      onChange={(value) => setTextSettings(prev => ({ ...prev, fontSize: formatSize(value) }))}
                       size="small"
                     />
                   </div>
@@ -1001,33 +1059,35 @@ const BadgeDesigner = () => {
                     />
                   </div>
                   <div>
-                    <Text>位置 X: {textSettings.x}mm</Text>
+                    <Text>位置 X: {formatSize(textSettings.x)}mm</Text>
                     <Slider
-                      min={0}
+                      min={UNIT_CONFIG.TEXT.POSITION.min}
                       max={badgeSettings.width - 10}
+                      step={UNIT_CONFIG.TEXT.POSITION.step}
                       value={textSettings.x}
-                      onChange={(value) => setTextSettings(prev => ({ ...prev, x: value }))}
+                      onChange={(value) => setTextSettings(prev => ({ ...prev, x: formatSize(value) }))}
                       size="small"
                     />
                   </div>
                   <div>
-                    <Text>位置 Y: {textSettings.y}mm</Text>
+                    <Text>位置 Y: {formatSize(textSettings.y)}mm</Text>
                     <Slider
-                      min={0}
+                      min={UNIT_CONFIG.TEXT.POSITION.min}
                       max={badgeSettings.height - 10}
+                      step={UNIT_CONFIG.TEXT.POSITION.step}
                       value={textSettings.y}
-                      onChange={(value) => setTextSettings(prev => ({ ...prev, y: value }))}
+                      onChange={(value) => setTextSettings(prev => ({ ...prev, y: formatSize(value) }))}
                       size="small"
                     />
                   </div>
                   <div>
-                    <Text>行高: {textSettings.lineHeight}</Text>
+                    <Text>行高: {formatSize(textSettings.lineHeight, 1)}</Text>
                     <Slider
-                      min={1}
-                      max={2}
-                      step={0.1}
+                      min={UNIT_CONFIG.TEXT.LINE_HEIGHT.min}
+                      max={UNIT_CONFIG.TEXT.LINE_HEIGHT.max}
+                      step={UNIT_CONFIG.TEXT.LINE_HEIGHT.step}
                       value={textSettings.lineHeight}
-                      onChange={(value) => setTextSettings(prev => ({ ...prev, lineHeight: value }))}
+                      onChange={(value) => setTextSettings(prev => ({ ...prev, lineHeight: formatSize(value, 1) }))}
                       size="small"
                     />
                   </div>
