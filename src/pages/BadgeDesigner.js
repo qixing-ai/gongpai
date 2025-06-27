@@ -29,43 +29,50 @@ const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 const BadgeDesigner = () => {
-  // 工牌设置
+  // 统一尺寸单位转换函数
+  const mmToPx = (mm) => mm * 3.78; // 1mm ≈ 3.78px (96 DPI)
+  const pxToMm = (px) => px / 3.78;
+  
+  // 预览缩放比例
+  const PREVIEW_SCALE = 4;
+
+  // 工牌设置 - 统一使用毫米(mm)
   const [badgeSettings, setBadgeSettings] = useState({
-    width: 63,
-    height: 90,
+    width: 63,        // mm
+    height: 90,       // mm
     backgroundColor: '#ffffff',
-    borderRadius: 20,
+    borderRadius: 5,  // mm (原来是px，现在统一为mm)
   });
 
-  // 穿孔设置
+  // 穿孔设置 - 统一使用毫米(mm)
   const [holeSettings, setHoleSettings] = useState({
     enabled: false,
     shape: 'circle',
-    size: 6,
-    offsetY: 3,
-    width: 6,
-    height: 4,
-    borderRadius: 2,
+    size: 6,          // mm
+    offsetY: 3,       // mm
+    width: 6,         // mm
+    height: 4,        // mm
+    borderRadius: 2,  // mm
   });
 
-  // 图片设置
+  // 图片设置 - 统一使用毫米(mm)
   const [imageSettings, setImageSettings] = useState({
     src: null,
-    width: 30,
-    height: 30,
-    x: 17,
-    y: 23,
+    width: 30,        // mm
+    height: 30,       // mm
+    x: 17,            // mm
+    y: 23,            // mm
     opacity: 1,
   });
 
-  // 文字设置
+  // 文字设置 - 统一使用毫米(mm)
   const [textSettings, setTextSettings] = useState({
     content: '张三\n技术部',
-    fontSize: 1.5,
+    fontSize: 4,      // mm (简化字体大小计算)
     color: '#000000',
     fontFamily: 'Microsoft YaHei',
-    x: 26,
-    y: 68,
+    x: 26,            // mm
+    y: 68,            // mm
     lineHeight: 1.4,
   });
 
@@ -138,9 +145,8 @@ const BadgeDesigner = () => {
   const handleInteractionMove = useCallback((e) => {
     if (!interactionState.type) return;
     
-    const scale = 4;
-    const deltaX = (e.clientX - interactionState.startX) / scale;
-    const deltaY = (e.clientY - interactionState.startY) / scale;
+    const deltaX = (e.clientX - interactionState.startX) / PREVIEW_SCALE;
+    const deltaY = (e.clientY - interactionState.startY) / PREVIEW_SCALE;
     
     const { type, element, resizeType, startValues } = interactionState;
     
@@ -391,9 +397,8 @@ const BadgeDesigner = () => {
 
   // 渲染工牌预览
   const renderBadgePreview = () => {
-    const scale = 4;
-    const badgeWidth = badgeSettings.width * scale;
-    const badgeHeight = badgeSettings.height * scale;
+    const badgeWidth = badgeSettings.width * PREVIEW_SCALE;
+    const badgeHeight = badgeSettings.height * PREVIEW_SCALE;
 
     return (
       <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -403,7 +408,7 @@ const BadgeDesigner = () => {
             width: badgeWidth,
             height: badgeHeight,
             backgroundColor: badgeSettings.backgroundColor,
-            borderRadius: badgeSettings.borderRadius,
+            borderRadius: badgeSettings.borderRadius * PREVIEW_SCALE, // 统一使用mm单位
             position: 'relative',
             border: selectedElement === 'badge' ? '2px solid #1890ff' : '1px solid #d9d9d9',
             margin: '20px auto',
@@ -422,16 +427,16 @@ const BadgeDesigner = () => {
             <div
               style={{
                 position: 'absolute',
-                top: holeSettings.offsetY * scale,
+                top: holeSettings.offsetY * PREVIEW_SCALE,
                 left: '50%',
                 transform: 'translateX(-50%)',
-                width: holeSettings.shape === 'rectangle' ? holeSettings.width * scale : holeSettings.size * scale,
-                height: holeSettings.shape === 'rectangle' ? holeSettings.height * scale : holeSettings.size * scale,
+                width: holeSettings.shape === 'rectangle' ? holeSettings.width * PREVIEW_SCALE : holeSettings.size * PREVIEW_SCALE,
+                height: holeSettings.shape === 'rectangle' ? holeSettings.height * PREVIEW_SCALE : holeSettings.size * PREVIEW_SCALE,
                 backgroundColor: 'white',
                 border: selectedElement === 'hole' ? '2px solid #52c41a' : '2px solid #999',
                 borderRadius: holeSettings.shape === 'circle' ? '50%' : 
                             holeSettings.shape === 'oval' ? '50%' : 
-                            holeSettings.shape === 'rectangle' ? holeSettings.borderRadius * scale : '2px',
+                            holeSettings.shape === 'rectangle' ? holeSettings.borderRadius * PREVIEW_SCALE + 'px' : '2px',
                 cursor: 'pointer',
                 boxShadow: selectedElement === 'hole' ? '0 0 8px rgba(82, 196, 26, 0.3)' : 'none',
               }}
@@ -468,10 +473,10 @@ const BadgeDesigner = () => {
             <div
               style={{
                 position: 'absolute',
-                left: imageSettings.x * scale,
-                top: imageSettings.y * scale,
-                width: imageSettings.width * scale,
-                height: imageSettings.height * scale,
+                left: imageSettings.x * PREVIEW_SCALE,
+                top: imageSettings.y * PREVIEW_SCALE,
+                width: imageSettings.width * PREVIEW_SCALE,
+                height: imageSettings.height * PREVIEW_SCALE,
                 cursor: interactionState.type === 'drag' && interactionState.element === 'image' ? 'grabbing' : 'grab',
                 border: selectedElement === 'image' ? '2px solid #1890ff' : 
                        (interactionState.element === 'image' && interactionState.type === 'drag' ? '2px dashed #1890ff' : '2px solid transparent'),
@@ -533,8 +538,8 @@ const BadgeDesigner = () => {
           <div
             style={{
               position: 'absolute',
-              left: textSettings.x * scale,
-              top: textSettings.y * scale,
+              left: textSettings.x * PREVIEW_SCALE,
+              top: textSettings.y * PREVIEW_SCALE,
               cursor: interactionState.type === 'drag' && interactionState.element === 'text' ? 'grabbing' : 'grab',
               border: selectedElement === 'text' ? '2px solid #1890ff' :
                      (interactionState.element === 'text' && interactionState.type === 'drag' ? '2px dashed #1890ff' : '2px solid transparent'),
@@ -549,12 +554,12 @@ const BadgeDesigner = () => {
           >
             <div
               style={{
-                fontSize: textSettings.fontSize * scale * 2.5,
+                fontSize: textSettings.fontSize * PREVIEW_SCALE, // 简化字体大小计算，直接使用mm*缩放
                 color: textSettings.color,
                 fontFamily: textSettings.fontFamily,
                 lineHeight: textSettings.lineHeight,
                 whiteSpace: 'pre-line',
-                maxWidth: (badgeSettings.width - textSettings.x - 5) * scale,
+                maxWidth: (badgeSettings.width - textSettings.x - 5) * PREVIEW_SCALE,
                 textAlign: 'center',
                 pointerEvents: 'none',
               }}
@@ -610,7 +615,7 @@ const BadgeDesigner = () => {
       width: 63,
       height: 90,
       backgroundColor: '#ffffff',
-      borderRadius: 20,
+      borderRadius: 5, // mm
     });
     setHoleSettings({
       enabled: false,
@@ -631,7 +636,7 @@ const BadgeDesigner = () => {
     });
     setTextSettings({
       content: '张三\n技术部',
-      fontSize: 1.5,
+      fontSize: 4,      // mm
       color: '#000000',
       fontFamily: 'Microsoft YaHei',
       x: 26,
@@ -686,10 +691,11 @@ const BadgeDesigner = () => {
                   />
                 </div>
                 <div>
-                  <Text>圆角: {badgeSettings.borderRadius}px</Text>
+                  <Text>圆角: {badgeSettings.borderRadius}mm</Text>
                   <Slider
                     min={0}
                     max={20}
+                    step={0.5}
                     value={badgeSettings.borderRadius}
                     onChange={(value) => setBadgeSettings(prev => ({ ...prev, borderRadius: value }))}
                   />
@@ -902,6 +908,9 @@ const BadgeDesigner = () => {
                       实际尺寸: {badgeSettings.width}mm × {badgeSettings.height}mm
                     </Text>
                     <Text type="secondary" style={{ fontSize: '12px' }}>
+                      📏 所有尺寸单位均为毫米(mm) • 预览放大{PREVIEW_SCALE}倍显示
+                    </Text>
+                    <Text type="secondary" style={{ fontSize: '12px' }}>
                       💡 提示：点击选中元素显示调整手柄 • 拖拽调整尺寸和位置 • 方向键微调 • Delete删除 • Esc取消选中
                     </Text>
                   </Space>
@@ -939,9 +948,9 @@ const BadgeDesigner = () => {
                   <div>
                     <Text>字号: {textSettings.fontSize}mm</Text>
                     <Slider
-                      min={1}
-                      max={4}
-                      step={0.25}
+                      min={2}
+                      max={8}
+                      step={0.5}
                       value={textSettings.fontSize}
                       onChange={(value) => setTextSettings(prev => ({ ...prev, fontSize: value }))}
                       size="small"
