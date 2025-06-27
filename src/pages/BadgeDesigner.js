@@ -604,9 +604,32 @@ const BadgeDesigner = () => {
     );
   };
 
-  // 导出工牌
-  const exportBadge = () => {
-    message.success('工牌导出功能开发中...');
+  // 导出工牌为OBJ模型
+  const exportBadge = async () => {
+    try {
+      message.loading('正在生成OBJ模型...', 0);
+      
+      const { exportBadgeAsOBJ } = await import('../utils/objExporter');
+      
+      const result = await exportBadgeAsOBJ(
+        badgeSettings, 
+        holeSettings, 
+        imageSettings, 
+        textSettings
+      );
+      
+      message.destroy(); // 清除loading消息
+      
+      if (result.success) {
+        message.success(result.message, 5);
+      } else {
+        message.error(result.message);
+      }
+    } catch (error) {
+      message.destroy();
+      message.error('导出失败：' + error.message);
+      console.error('导出错误:', error);
+    }
   };
 
   // 重置设计
@@ -660,7 +683,7 @@ const BadgeDesigner = () => {
               重置
             </Button>
             <Button type="primary" icon={<DownloadOutlined />} onClick={exportBadge}>
-              导出工牌
+              导出OBJ模型
             </Button>
           </Space>
         </div>
@@ -912,6 +935,9 @@ const BadgeDesigner = () => {
                     </Text>
                     <Text type="secondary" style={{ fontSize: '12px' }}>
                       💡 提示：点击选中元素显示调整手柄 • 拖拽调整尺寸和位置 • 方向键微调 • Delete删除 • Esc取消选中
+                    </Text>
+                    <Text type="secondary" style={{ fontSize: '12px', color: '#1890ff' }}>
+                      🎯 导出说明：点击"导出OBJ模型"将下载3个文件 - badge.obj（模型）、badge.mtl（材质）、badge_texture.png（贴图）
                     </Text>
                   </Space>
                 </div>
