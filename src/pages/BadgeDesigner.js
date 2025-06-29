@@ -67,6 +67,12 @@ const BadgeDesigner = () => {
     lineHeight: 1.4,
   });
 
+  // 导出设置 - 统一使用毫米(mm)
+  const [exportSettings, setExportSettings] = useState({
+    doubleSided: true,    // 双面/单面
+    thickness: 2.0,       // 厚度 mm
+  });
+
   // 使用交互Hook
   const {
     interactionState,
@@ -97,7 +103,8 @@ const BadgeDesigner = () => {
         badgeSettings, 
         holeSettings, 
         imageSettings, 
-        textSettings
+        textSettings,
+        exportSettings
       );
       
       message.destroy(); // 清除loading消息
@@ -147,6 +154,10 @@ const BadgeDesigner = () => {
       x: formatSize(26),
       y: formatSize(68),
       lineHeight: formatSize(1.4, 1),
+    });
+    setExportSettings({
+      doubleSided: true,
+      thickness: formatSize(2.0, 1),
     });
     setSelectedElement(null);
     message.success('设计已重置');
@@ -208,6 +219,8 @@ const BadgeDesigner = () => {
                 textSettings={textSettings}
                 setTextSettings={setTextSettings}
                 badgeSettings={badgeSettings}
+                exportSettings={exportSettings}
+                setExportSettings={setExportSettings}
                 UNIT_CONFIG={UNIT_CONFIG}
                 formatSize={formatSize}
               />

@@ -136,7 +136,7 @@ export class BadgeOBJExporter {
   }
 
   // 生成面（正面、背面、侧面）- 水密版
-  generateFaces(vertices, uvs, pointCount, hasHole = false, holeVertices = [], holeUVs = []) {
+  generateFaces(vertices, uvs, pointCount, hasHole = false, holeVertices = [], holeUVs = [], thickness = 2.0) {
     if (hasHole) {
       // 带孔洞的水密面生成
       const holePointCount = holeUVs.length / 2;
@@ -155,9 +155,9 @@ export class BadgeOBJExporter {
         false
       );
     } else {
-      // 普通面
-      const centerFront = this.addVertex(0, 0, 1);
-      const centerBack = this.addVertex(0, 0, -1);
+      // 普通面 - 使用实际厚度
+      const centerFront = this.addVertex(0, 0, thickness / 2);
+      const centerBack = this.addVertex(0, 0, -thickness / 2);
       const centerUV = this.addUV(0.5, 0.5);
       
       // 正面 - 确保法线向前（顺时针顺序）
@@ -259,22 +259,21 @@ export class BadgeOBJExporter {
     }
   }
 
-  // 主要生成函数
-  generateBadgeOBJ(badgeSettings, holeSettings, imageSettings, textSettings) {
-    this.vertices = [];
-    this.uvs = [];
-    this.faces = [];
-    this.vertexIndex = 1;
-
-    const { width, height, borderRadius } = badgeSettings;
-    const thickness = 2.0;
-
-    // 创建外轮廓
-    const outerPoints = this.createPoints('rectangle', { width, height, borderRadius });
-    const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height);
+  // 生成单面模型
+  generateSingleSidedModel(outerPoints, holeSettings, width, height, thickness) {
+    // 只创建正面顶点
+    const vertices = [];
+    const uvs = [];
+    
+    outerPoints.forEach(point => {
+      vertices.push(this.addVertex(point.x, point.y, thickness / 2));
+      const u = (point.x + width / 2) / width;
+      const v = (point.y + height / 2) / height;
+      uvs.push(this.addUV(u, v));
+    });
 
     if (holeSettings.enabled) {
-      // 创建孔洞
+      // 创建孔洞顶点
       const holeX = 0;
       const holeY = height / 2 - holeSettings.offsetY;
       
@@ -292,19 +291,110 @@ export class BadgeOBJExporter {
       }
       
       const innerPoints = this.createPoints(holeType, holeParams);
-      const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height);
+      const holeVertices = [];
+      const holeUVs = [];
       
-      this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs);
+      innerPoints.forEach(point => {
+        holeVertices.push(this.addVertex(point.x, point.y, thickness / 2));
+        const u = (point.x + width / 2) / width;
+        const v = (point.y + height / 2) / height;
+        holeUVs.push(this.addUV(u, v));
+      });
+
+      // 生成带孔洞的单面
+      this.createSingleSidedHoleFaces(vertices, uvs, holeVertices, holeUVs);
     } else {
-      this.generateFaces(outer.vertices, outer.uvs, outerPoints.length);
+      // 生成普通单面
+      const centerVertex = this.addVertex(0, 0, thickness / 2);
+      const centerUV = this.addUV(0.5, 0.5);
+      
+      for (let i = 0; i < vertices.length; i++) {
+        const next = (i + 1) % vertices.length;
+        this.addFace(centerVertex, vertices[i], vertices[next], centerUV, uvs[i], uvs[next]);
+      }
+    }
+  }
+
+  // 创建单面带孔洞的面
+  createSingleSidedHoleFaces(outerVertices, outerUVs, innerVertices, innerUVs) {
+    const outerCount = outerVertices.length;
+    const innerCount = innerVertices.length;
+    const segments = Math.max(outerCount, innerCount);
+    
+    // 生成连接面
+    for (let i = 0; i < segments; i++) {
+      const outerIdx1 = Math.floor(i * outerCount / segments) % outerCount;
+      const outerIdx2 = Math.floor((i + 1) * outerCount / segments) % outerCount;
+      
+      const innerIdx1 = Math.floor(i * innerCount / segments) % innerCount;
+      const innerIdx2 = Math.floor((i + 1) * innerCount / segments) % innerCount;
+      
+      const [ov1, ov2, iv1, iv2] = [outerVertices[outerIdx1], outerVertices[outerIdx2], innerVertices[innerIdx1], innerVertices[innerIdx2]];
+      const [ouv1, ouv2, iuv1, iuv2] = [outerUVs[outerIdx1], outerUVs[outerIdx2], innerUVs[innerIdx1], innerUVs[innerIdx2]];
+      
+      // 检查是否为有效三角形并添加面
+      if (this.isValidTriangle(ov1, ov2, iv1)) {
+        this.addFace(ov1, ov2, iv1, ouv1, ouv2, iuv1);
+      }
+      if (this.isValidTriangle(ov2, iv2, iv1)) {
+        this.addFace(ov2, iv2, iv1, ouv2, iuv2, iuv1);
+      }
+    }
+  }
+
+  // 主要生成函数
+  generateBadgeOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings = { doubleSided: true, thickness: 2.0 }) {
+    this.vertices = [];
+    this.uvs = [];
+    this.faces = [];
+    this.vertexIndex = 1;
+
+    const { width, height, borderRadius } = badgeSettings;
+    const thickness = exportSettings.thickness;
+
+    // 创建外轮廓
+    const outerPoints = this.createPoints('rectangle', { width, height, borderRadius });
+    
+    if (exportSettings.doubleSided) {
+      // 双面模型 - 创建完整的3D结构
+      const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height);
+
+      if (holeSettings.enabled) {
+        // 创建孔洞
+        const holeX = 0;
+        const holeY = height / 2 - holeSettings.offsetY;
+        
+        let holeParams, holeType;
+        
+        if (holeSettings.shape === 'circle') {
+          holeParams = { radius: holeSettings.size / 2, centerX: holeX, centerY: holeY };
+          holeType = 'circle';
+        } else if (holeSettings.shape === 'oval') {
+          holeParams = { width: holeSettings.size, height: holeSettings.size * 0.6, centerX: holeX, centerY: holeY };
+          holeType = 'oval';
+        } else {
+          holeParams = { width: holeSettings.width, height: holeSettings.height, centerX: holeX, centerY: holeY, borderRadius: holeSettings.borderRadius };
+          holeType = 'rectangle';
+        }
+        
+        const innerPoints = this.createPoints(holeType, holeParams);
+        const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height);
+        
+        this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs, thickness);
+      } else {
+        this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, false, [], [], thickness);
+      }
+    } else {
+      // 单面模型 - 只创建正面
+      this.generateSingleSidedModel(outerPoints, holeSettings, width, height, thickness);
     }
 
-    return this.generateOBJContent(badgeSettings, imageSettings, textSettings);
+    return this.generateOBJContent(badgeSettings, imageSettings, textSettings, exportSettings);
   }
 
   // 生成OBJ文件内容
-  generateOBJContent(badgeSettings, imageSettings, textSettings) {
-    let obj = `# 水密工牌 OBJ 模型\n# 尺寸: ${badgeSettings.width}mm x ${badgeSettings.height}mm x 2mm\n# 生成时间: ${new Date().toLocaleString('zh-CN')}\n# 特性: 水密结构，适合3D打印\n\n`;
+  generateOBJContent(badgeSettings, imageSettings, textSettings, exportSettings) {
+    let obj = `# 水密工牌 OBJ 模型\n# 尺寸: ${badgeSettings.width}mm x ${badgeSettings.height}mm x ${exportSettings.thickness}mm\n# 生成时间: ${new Date().toLocaleString('zh-CN')}\n# 特性: 水密结构，适合3D打印\n\n`;
     
     obj += '# 顶点坐标\n';
     this.vertices.forEach(v => obj += `v ${v.x.toFixed(6)} ${v.y.toFixed(6)} ${v.z.toFixed(6)}\n`);
@@ -377,11 +467,11 @@ export class BadgeOBJExporter {
 }
 
 // 导出函数
-export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSettings, textSettings) {
+export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings = { doubleSided: true, thickness: 2.0 }) {
   const exporter = new BadgeOBJExporter();
   
   try {
-    const objContent = exporter.generateBadgeOBJ(badgeSettings, holeSettings, imageSettings, textSettings);
+    const objContent = exporter.generateBadgeOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings);
     const mtlContent = exporter.generateMTLContent();
     const textureCanvas = await exporter.generateTextureCanvas(badgeSettings, imageSettings, textSettings);
     
@@ -408,7 +498,11 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     }, 'image/png');
     
-    return { success: true, message: '水密工牌OBJ模型导出成功！已下载3个文件：badge.obj、badge.mtl、badge_texture.png\n✅ 模型已优化为水密结构，适合3D打印' };
+    const modelType = exportSettings.doubleSided ? '双面' : '单面';
+    return { 
+      success: true, 
+      message: `${modelType}工牌OBJ模型导出成功！\n厚度: ${exportSettings.thickness}mm\n已下载3个文件：badge.obj、badge.mtl、badge_texture.png\n✅ 模型已优化为水密结构，适合3D打印` 
+    };
   } catch (error) {
     return { success: false, message: '导出失败：' + error.message };
   }
