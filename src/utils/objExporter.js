@@ -401,7 +401,49 @@ export class BadgeOBJExporter {
         img.crossOrigin = 'anonymous';
         img.onload = () => {
           ctx.globalAlpha = imageSettings.opacity;
-          ctx.drawImage(img, imageSettings.x * scaleX, imageSettings.y * scaleY, imageSettings.width * scaleX, imageSettings.height * scaleY);
+          
+          // 实现 objectFit: 'cover' 效果，与页面预览保持一致
+          const targetX = imageSettings.x * scaleX;
+          const targetY = imageSettings.y * scaleY;
+          const targetWidth = imageSettings.width * scaleX;
+          const targetHeight = imageSettings.height * scaleY;
+          
+          // 计算图片的缩放比例（保持宽高比的同时填充整个区域）
+          const imageAspect = img.width / img.height;
+          const targetAspect = targetWidth / targetHeight;
+          
+          let drawWidth, drawHeight, drawX, drawY;
+          let sourceX = 0, sourceY = 0, sourceWidth = img.width, sourceHeight = img.height;
+          
+          if (imageAspect > targetAspect) {
+            // 图片比目标区域更宽，需要裁剪左右两边
+            const scaledHeight = img.height;
+            const scaledWidth = scaledHeight * targetAspect;
+            sourceX = (img.width - scaledWidth) / 2;
+            sourceWidth = scaledWidth;
+            drawX = targetX;
+            drawY = targetY;
+            drawWidth = targetWidth;
+            drawHeight = targetHeight;
+          } else {
+            // 图片比目标区域更高，需要裁剪上下两边
+            const scaledWidth = img.width;
+            const scaledHeight = scaledWidth / targetAspect;
+            sourceY = (img.height - scaledHeight) / 2;
+            sourceHeight = scaledHeight;
+            drawX = targetX;
+            drawY = targetY;
+            drawWidth = targetWidth;
+            drawHeight = targetHeight;
+          }
+          
+          // 使用裁剪后的图片区域绘制
+          ctx.drawImage(
+            img, 
+            sourceX, sourceY, sourceWidth, sourceHeight,  // 源图片的裁剪区域
+            drawX, drawY, drawWidth, drawHeight           // 目标画布的绘制区域
+          );
+          
           this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY);
           // 确保左下角保持白色
           ctx.globalAlpha = 1.0;
