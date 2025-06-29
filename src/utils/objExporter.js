@@ -116,21 +116,31 @@ export class BadgeOBJExporter {
   }
 
   // 创建顶点和UV（统一的顶点生成函数）
-  createVerticesAndUVs(points, thickness, width, height) {
+  createVerticesAndUVs(points, thickness, width, height, doubleSided = true) {
     const vertices = [];
     const uvs = [];
     
-    // 正面和背面
-    for (let layer = 0; layer < 2; layer++) {
-      const z = layer === 0 ? thickness / 2 : -thickness / 2;
-      
-      points.forEach(point => {
-        vertices.push(this.addVertex(point.x, point.y, z));
-        const u = (point.x + width / 2) / width;
+    // 正面顶点和UV（双面和单面都需要）
+    points.forEach(point => {
+      vertices.push(this.addVertex(point.x, point.y, thickness / 2));
+      const u = (point.x + width / 2) / width;
+      const v = (point.y + height / 2) / height;
+      uvs.push(this.addUV(u, v));
+    });
+    
+    // 背面顶点
+    points.forEach(point => {
+      vertices.push(this.addVertex(point.x, point.y, -thickness / 2));
+      if (doubleSided) {
+        // 双面模型：背面也有UV贴图（镜像）
+        const u = 1.0 - (point.x + width / 2) / width; // 镜像U坐标
         const v = (point.y + height / 2) / height;
         uvs.push(this.addUV(u, v));
-      });
-    }
+      } else {
+        // 单面模型：背面使用白色UV坐标（固定在贴图的白色区域）
+        uvs.push(this.addUV(0.0, 0.0)); // 贴图左下角，通常是白色背景
+      }
+    });
     
     return { vertices, uvs };
   }
@@ -240,40 +250,34 @@ export class BadgeOBJExporter {
     return v1 !== v2 && v2 !== v3 && v1 !== v3;
   }
 
-  // 生成侧面 - 修复法线方向
+  // 生成侧面 - 侧面不使用贴图映射
   generateSideFaces(vertices, uvs, pointCount, inward) {
+    // 创建侧面专用的白色UV坐标
+    const sideUV = this.addUV(0.0, 0.0); // 固定使用白色区域
+    
     for (let i = 0; i < pointCount; i++) {
       const next = (i + 1) % pointCount;
       const [v1, v2, v3, v4] = [vertices[i], vertices[next], vertices[i + pointCount], vertices[next + pointCount]];
-      const [uv1, uv2, uv3, uv4] = [uvs[i], uvs[next], uvs[i + pointCount], uvs[next + pointCount]];
       
       if (inward) {
         // 孔洞内侧面 - 法线向内（修正顶点顺序）
-        this.addFace(v1, v2, v3, uv1, uv2, uv3);
-        this.addFace(v2, v4, v3, uv2, uv4, uv3);
+        this.addFace(v1, v2, v3, sideUV, sideUV, sideUV);
+        this.addFace(v2, v4, v3, sideUV, sideUV, sideUV);
       } else {
         // 外侧面 - 法线向外（修正顶点顺序）
-        this.addFace(v1, v3, v2, uv1, uv3, uv2);
-        this.addFace(v2, v3, v4, uv2, uv3, uv4);
+        this.addFace(v1, v3, v2, sideUV, sideUV, sideUV);
+        this.addFace(v2, v3, v4, sideUV, sideUV, sideUV);
       }
     }
   }
 
   // 生成单面模型
   generateSingleSidedModel(outerPoints, holeSettings, width, height, thickness) {
-    // 只创建正面顶点
-    const vertices = [];
-    const uvs = [];
-    
-    outerPoints.forEach(point => {
-      vertices.push(this.addVertex(point.x, point.y, thickness / 2));
-      const u = (point.x + width / 2) / width;
-      const v = (point.y + height / 2) / height;
-      uvs.push(this.addUV(u, v));
-    });
+    // 使用单面模式创建顶点和UV（背面将使用白色UV）
+    const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, false);
 
     if (holeSettings.enabled) {
-      // 创建孔洞顶点
+      // 创建孔洞
       const holeX = 0;
       const holeY = height / 2 - holeSettings.offsetY;
       
@@ -291,54 +295,13 @@ export class BadgeOBJExporter {
       }
       
       const innerPoints = this.createPoints(holeType, holeParams);
-      const holeVertices = [];
-      const holeUVs = [];
-      
-      innerPoints.forEach(point => {
-        holeVertices.push(this.addVertex(point.x, point.y, thickness / 2));
-        const u = (point.x + width / 2) / width;
-        const v = (point.y + height / 2) / height;
-        holeUVs.push(this.addUV(u, v));
-      });
+      const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height, false);
 
-      // 生成带孔洞的单面
-      this.createSingleSidedHoleFaces(vertices, uvs, holeVertices, holeUVs);
+      // 生成完整的带孔洞模型（包括正面、背面、侧面）
+      this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs, thickness);
     } else {
-      // 生成普通单面
-      const centerVertex = this.addVertex(0, 0, thickness / 2);
-      const centerUV = this.addUV(0.5, 0.5);
-      
-      for (let i = 0; i < vertices.length; i++) {
-        const next = (i + 1) % vertices.length;
-        this.addFace(centerVertex, vertices[i], vertices[next], centerUV, uvs[i], uvs[next]);
-      }
-    }
-  }
-
-  // 创建单面带孔洞的面
-  createSingleSidedHoleFaces(outerVertices, outerUVs, innerVertices, innerUVs) {
-    const outerCount = outerVertices.length;
-    const innerCount = innerVertices.length;
-    const segments = Math.max(outerCount, innerCount);
-    
-    // 生成连接面
-    for (let i = 0; i < segments; i++) {
-      const outerIdx1 = Math.floor(i * outerCount / segments) % outerCount;
-      const outerIdx2 = Math.floor((i + 1) * outerCount / segments) % outerCount;
-      
-      const innerIdx1 = Math.floor(i * innerCount / segments) % innerCount;
-      const innerIdx2 = Math.floor((i + 1) * innerCount / segments) % innerCount;
-      
-      const [ov1, ov2, iv1, iv2] = [outerVertices[outerIdx1], outerVertices[outerIdx2], innerVertices[innerIdx1], innerVertices[innerIdx2]];
-      const [ouv1, ouv2, iuv1, iuv2] = [outerUVs[outerIdx1], outerUVs[outerIdx2], innerUVs[innerIdx1], innerUVs[innerIdx2]];
-      
-      // 检查是否为有效三角形并添加面
-      if (this.isValidTriangle(ov1, ov2, iv1)) {
-        this.addFace(ov1, ov2, iv1, ouv1, ouv2, iuv1);
-      }
-      if (this.isValidTriangle(ov2, iv2, iv1)) {
-        this.addFace(ov2, iv2, iv1, ouv2, iuv2, iuv1);
-      }
+      // 生成完整的普通模型（包括正面、背面、侧面）
+      this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, false, [], [], thickness);
     }
   }
 
@@ -357,7 +320,7 @@ export class BadgeOBJExporter {
     
     if (exportSettings.doubleSided) {
       // 双面模型 - 创建完整的3D结构
-      const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height);
+      const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, true);
 
       if (holeSettings.enabled) {
         // 创建孔洞
@@ -378,7 +341,7 @@ export class BadgeOBJExporter {
         }
         
         const innerPoints = this.createPoints(holeType, holeParams);
-        const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height);
+        const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height, true);
         
         this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs, thickness);
       } else {
@@ -427,6 +390,10 @@ export class BadgeOBJExporter {
     ctx.fillStyle = badgeSettings.backgroundColor;
     ctx.fillRect(0, 0, resolution, resolution);
     
+    // 确保左下角是白色区域（供单面模型背面使用）
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, resolution - 32, 32, 32); // 左下角32x32像素的白色区域
+    
     // 绘制图片和文字
     if (imageSettings.src) {
       return new Promise(resolve => {
@@ -436,12 +403,19 @@ export class BadgeOBJExporter {
           ctx.globalAlpha = imageSettings.opacity;
           ctx.drawImage(img, imageSettings.x * scaleX, imageSettings.y * scaleY, imageSettings.width * scaleX, imageSettings.height * scaleY);
           this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY);
+          // 确保左下角保持白色
+          ctx.globalAlpha = 1.0;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, resolution - 32, 32, 32);
           resolve(canvas);
         };
         img.src = imageSettings.src;
       });
     } else {
       this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY);
+      // 确保左下角保持白色
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, resolution - 32, 32, 32);
       return Promise.resolve(canvas);
     }
   }
