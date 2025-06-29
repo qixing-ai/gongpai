@@ -277,9 +277,9 @@ export class BadgeOBJExporter {
     const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, false);
 
     if (holeSettings.enabled) {
-      // 创建孔洞
-      const holeX = 0;
-      const holeY = height / 2 - holeSettings.offsetY;
+      // 创建孔洞 - 与页面预览保持一致：水平居中，垂直从顶部偏移
+      const holeX = 0; // 水平居中（在中心坐标系中为0）
+      const holeY = height / 2 - holeSettings.offsetY; // 从顶部开始的偏移转换为中心坐标系
       
       let holeParams, holeType;
       
@@ -323,9 +323,9 @@ export class BadgeOBJExporter {
       const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, true);
 
       if (holeSettings.enabled) {
-        // 创建孔洞
-        const holeX = 0;
-        const holeY = height / 2 - holeSettings.offsetY;
+        // 创建孔洞 - 与页面预览保持一致：水平居中，垂直从顶部偏移
+        const holeX = 0; // 水平居中（在中心坐标系中为0）
+        const holeY = height / 2 - holeSettings.offsetY; // 从顶部开始的偏移转换为中心坐标系
         
         let holeParams, holeType;
         
@@ -377,22 +377,92 @@ export class BadgeOBJExporter {
   }
 
   // 生成贴图
-  generateTextureCanvas(badgeSettings, imageSettings, textSettings) {
+  generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    const resolution = 512;
     
-    canvas.width = canvas.height = resolution;
-    const scaleX = resolution / badgeSettings.width;
-    const scaleY = resolution / badgeSettings.height;
+    // 直接按照工牌的宽高比例设置画布尺寸，确保1:1对应
+    const maxResolution = 1024;
+    const aspectRatio = badgeSettings.width / badgeSettings.height;
+    
+    let canvasWidth, canvasHeight;
+    if (aspectRatio > 1) {
+      // 宽度大于高度
+      canvasWidth = maxResolution;
+      canvasHeight = Math.round(maxResolution / aspectRatio);
+    } else {
+      // 高度大于或等于宽度
+      canvasHeight = maxResolution;
+      canvasWidth = Math.round(maxResolution * aspectRatio);
+    }
+    
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    
+    // 确保缩放比例完全一致，避免舍入误差
+    const scaleX = canvasWidth / badgeSettings.width;
+    const scaleY = canvasHeight / badgeSettings.height;
     
     // 背景
     ctx.fillStyle = badgeSettings.backgroundColor;
-    ctx.fillRect(0, 0, resolution, resolution);
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    
+    // 绘制挖孔（如果启用）
+    if (holeSettings.enabled) {
+      // 将挖孔位置从页面预览坐标系转换为画布坐标系
+      const holeCanvasX = canvasWidth / 2; // 水平居中
+      
+      // 与3D模型保持一致的位置计算
+      // 3D模型中挖孔中心：holeY = height / 2 - holeSettings.offsetY
+      // 转换为画布坐标系（左上角为原点）：
+      // 挖孔中心Y = height / 2 + (height / 2 - holeSettings.offsetY) = height - holeSettings.offsetY
+      const holeCenterY = (badgeSettings.height - holeSettings.offsetY) * scaleY;
+      
+      ctx.fillStyle = '#ffffff'; // 挖孔用白色填充
+      
+      if (holeSettings.shape === 'circle') {
+        const radius = (holeSettings.size / 2) * scaleX;
+        ctx.beginPath();
+        ctx.arc(holeCanvasX, holeCenterY, radius, 0, 2 * Math.PI); // 使用挖孔中心位置
+        ctx.fill();
+      } else if (holeSettings.shape === 'oval') {
+        const radiusX = (holeSettings.size / 2) * scaleX;
+        const radiusY = (holeSettings.size * 0.6 / 2) * scaleY;
+        ctx.beginPath();
+        ctx.ellipse(holeCanvasX, holeCenterY, radiusX, radiusY, 0, 0, 2 * Math.PI); // 使用挖孔中心位置
+        ctx.fill();
+      } else if (holeSettings.shape === 'rectangle') {
+        const holeWidth = holeSettings.width * scaleX;
+        const holeHeight = holeSettings.height * scaleY;
+        const radius = holeSettings.borderRadius * Math.min(scaleX, scaleY);
+        
+        if (radius > 0) {
+          // 圆角矩形 - 手动绘制以确保兼容性
+          const x = holeCanvasX - holeWidth/2;
+          const y = holeCenterY - holeHeight/2; // 使用挖孔中心位置
+          ctx.beginPath();
+          ctx.moveTo(x + radius, y);
+          ctx.lineTo(x + holeWidth - radius, y);
+          ctx.quadraticCurveTo(x + holeWidth, y, x + holeWidth, y + radius);
+          ctx.lineTo(x + holeWidth, y + holeHeight - radius);
+          ctx.quadraticCurveTo(x + holeWidth, y + holeHeight, x + holeWidth - radius, y + holeHeight);
+          ctx.lineTo(x + radius, y + holeHeight);
+          ctx.quadraticCurveTo(x, y + holeHeight, x, y + holeHeight - radius);
+          ctx.lineTo(x, y + radius);
+          ctx.quadraticCurveTo(x, y, x + radius, y);
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          // 普通矩形
+          ctx.fillRect(holeCanvasX - holeWidth/2, holeCenterY - holeHeight/2, holeWidth, holeHeight); // 使用挖孔中心位置
+        }
+      }
+    }
     
     // 确保左下角是白色区域（供单面模型背面使用）
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, resolution - 32, 32, 32); // 左下角32x32像素的白色区域
+    const whiteAreaSize = Math.min(32, Math.min(canvasWidth, canvasHeight) / 16);
+    ctx.fillRect(0, canvasHeight - whiteAreaSize, whiteAreaSize, whiteAreaSize);
     
     // 绘制图片和文字
     if (imageSettings.src) {
@@ -403,6 +473,7 @@ export class BadgeOBJExporter {
           ctx.globalAlpha = imageSettings.opacity;
           
           // 实现 objectFit: 'cover' 效果，与页面预览保持一致
+          // 页面预览使用左上角为原点的坐标系，直接转换到画布坐标系
           const targetX = imageSettings.x * scaleX;
           const targetY = imageSettings.y * scaleY;
           const targetWidth = imageSettings.width * scaleX;
@@ -444,36 +515,38 @@ export class BadgeOBJExporter {
             drawX, drawY, drawWidth, drawHeight           // 目标画布的绘制区域
           );
           
-          this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY);
+          this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY, canvasWidth, canvasHeight);
           // 确保左下角保持白色
           ctx.globalAlpha = 1.0;
           ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, resolution - 32, 32, 32);
+          ctx.fillRect(0, canvasHeight - whiteAreaSize, whiteAreaSize, whiteAreaSize);
           resolve(canvas);
         };
         img.src = imageSettings.src;
       });
     } else {
-      this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY);
+      this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY, canvasWidth, canvasHeight);
       // 确保左下角保持白色
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, resolution - 32, 32, 32);
+      const whiteAreaSize = Math.min(32, Math.min(canvasWidth, canvasHeight) / 16);
+      ctx.fillRect(0, canvasHeight - whiteAreaSize, whiteAreaSize, whiteAreaSize);
       return Promise.resolve(canvas);
     }
   }
 
   // 绘制文字
-  drawText(ctx, textSettings, badgeSettings, scaleX, scaleY) {
+  drawText(ctx, textSettings, badgeSettings, scaleX, scaleY, canvasWidth, canvasHeight) {
     if (!textSettings.content) return;
     
     ctx.globalAlpha = 1.0;
     ctx.fillStyle = textSettings.color;
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.textBaseline = 'top'; // 改为top，与页面预览的定位方式一致
     ctx.font = `${textSettings.fontSize * scaleX}px ${textSettings.fontFamily}`;
     
-    const x = (textSettings.x + textSettings.fontSize * 2) * scaleX;
-    const y = (textSettings.y + textSettings.fontSize / 2) * scaleY;
+    // 页面预览使用左上角为原点的坐标系，直接转换到画布坐标系
+    const x = textSettings.x * scaleX;
+    const y = textSettings.y * scaleY;
     const lineHeight = textSettings.fontSize * scaleX * textSettings.lineHeight;
     
     textSettings.content.split('\n').forEach((line, i) => {
@@ -489,7 +562,7 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
   try {
     const objContent = exporter.generateBadgeOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings);
     const mtlContent = exporter.generateMTLContent();
-    const textureCanvas = await exporter.generateTextureCanvas(badgeSettings, imageSettings, textSettings);
+    const textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings);
     
     // 下载文件
     const downloads = [
