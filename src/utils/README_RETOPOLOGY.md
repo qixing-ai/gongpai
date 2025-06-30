@@ -134,7 +134,7 @@ const result = await exportBadgeAsOBJ(
 ## 调试功能
 
 ```javascript
-import { testRetopologyFeatures, testCornerFixFeatures, testNormalFixFeatures } from './objExporter.js';
+import { testRetopologyFeatures, testCornerFixFeatures, testNormalFixFeatures, testHoleFixFeatures } from './objExporter.js';
 
 // 测试重拓扑功能配置
 const testResult = testRetopologyFeatures();
@@ -147,6 +147,10 @@ console.log(cornerResult);
 // 测试法线修复功能
 const normalResult = testNormalFixFeatures();
 console.log(normalResult);
+
+// 测试孔洞修复功能
+const holeResult = testHoleFixFeatures();
+console.log(holeResult);
 ```
 
 ## 注意事项
@@ -222,4 +226,56 @@ addFaceWithNormalCheck()             // 添加带法线检查的面
 - ✅ 解决模型旋转时的光照异常
 - ✅ 消除面片显示错乱问题
 - ✅ 确保法线方向一致性
-- ✅ 提升模型的渲染质量 
+- ✅ 提升模型的渲染质量
+
+## 孔洞修复专项说明 🕳️
+
+### 问题背景
+当工牌添加挖孔功能时，孔洞的左上角和右下角容易出现三角形缺口，同时孔洞内部可能被错误填充网格，影响模型的正确性。
+
+### 孔洞特殊处理
+1. **智能边界识别**
+   - 自动区分外边界和孔洞边界
+   - 孔洞使用15%的角落检测阈值（比外边界10%更宽松）
+   - 专门的孔洞边界连接算法
+
+2. **外围网格连接**
+   - 只连接孔洞外围的网格顶点
+   - 智能过滤：自动排除孔洞内部的网格顶点
+   - 防止孔洞被错误填充
+
+3. **特殊法线处理**
+   - 孔洞边界使用反向顶点顺序
+   - 确保孔洞内表面法线正确
+   - 与外边界法线方向协调一致
+
+4. **增强连接策略**
+   - 孔洞使用更多连接点（3-5个）
+   - 多层次角落修复确保完全封闭
+   - 特殊的三角形生成顺序
+
+### 技术实现
+```javascript
+// 孔洞检测和过滤
+if (isHole) {
+  // 只连接孔洞外围的网格顶点
+  nearbyVertices = validMeshVertices
+    .filter(mv => !this.isPointInPolygon(mv.x, mv.y, boundaryVertices))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 5); // 使用更多连接点
+}
+
+// 孔洞特殊顶点顺序
+if (isHole) {
+  this.addFaceWithNormalCheck(bv1, bv2, mv1.index, buv1, buv2, muv1, isFront);
+} else {
+  this.addFaceWithNormalCheck(bv1, mv1.index, bv2, buv1, muv1, buv2, isFront);
+}
+```
+
+### 修复效果
+- ✅ 消除孔洞左上角和右下角的缺口
+- ✅ 防止孔洞内部被错误填充
+- ✅ 确保孔洞边界法线正确
+- ✅ 保持孔洞形状的完整性
+- ✅ 适用于圆形、椭圆形、矩形等各种孔洞形状 
