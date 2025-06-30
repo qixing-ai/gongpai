@@ -88,7 +88,7 @@ const BadgePreview = ({
             borderRadius: badgeSettings.borderRadius * UNIT_CONFIG.PREVIEW_SCALE,
             position: 'relative',
             border: selectedElement === 'badge' ? '2px solid #1890ff' : '1px solid #d9d9d9',
-            margin: '20px auto',
+            margin: '10px auto',
             overflow: 'visible',
             boxShadow: selectedElement === 'badge' ? '0 0 8px rgba(24, 144, 255, 0.3)' : '0 4px 12px rgba(0,0,0,0.1)',
             cursor: interactionState.type === 'drag' ? 'grabbing' : 'pointer',
@@ -282,13 +282,18 @@ const BadgePreview = ({
   };
 
   return (
-    <Card title="工牌预览" style={{ height: '100%' }}>
+    <Card 
+      title="工牌预览" 
+      size="small"
+      style={{ height: '100%' }}
+      bodyStyle={{ padding: '8px' }}
+    >
       <div 
         style={{ 
           display: 'flex', 
           justifyContent: 'center', 
           alignItems: 'center',
-          minHeight: 600,
+          minHeight: 'calc(100vh - 220px)',
           background: '#fafafa',
           borderRadius: 8,
         }}
@@ -300,20 +305,17 @@ const BadgePreview = ({
       >
         {renderBadgePreview()}
       </div>
-      <Divider />
+      <Divider style={{ margin: '8px 0' }} />
       <div style={{ textAlign: 'center' }}>
-        <Space direction="vertical" size="small">
-          <Text type="secondary">
+        <Space direction="vertical" size={2}>
+          <Text type="secondary" style={{ fontSize: '11px' }}>
             实际尺寸: {formatSize(badgeSettings.width)}mm × {formatSize(badgeSettings.height)}mm
           </Text>
-          <Text type="secondary" style={{ fontSize: '12px' }}>
+          <Text type="secondary" style={{ fontSize: '10px' }}>
             📏 所有尺寸单位均为毫米(mm) • 预览放大{UNIT_CONFIG.PREVIEW_SCALE}倍显示
           </Text>
-          <Text type="secondary" style={{ fontSize: '12px' }}>
-            💡 提示：点击选中元素显示调整手柄 • 拖拽调整尺寸和位置 • 方向键微调 • Delete删除 • Esc取消选中
-          </Text>
-          <Text type="secondary" style={{ fontSize: '12px', color: '#1890ff' }}>
-            🎯 导出说明：点击"导出OBJ模型"将下载3个文件 - badge.obj（模型）、badge.mtl（材质）、badge_texture.png（贴图）
+          <Text type="secondary" style={{ fontSize: '10px' }}>
+            💡 提示：点击选中元素显示调整手柄 • 拖拽调整尺寸和位置
           </Text>
         </Space>
       </div>

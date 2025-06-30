@@ -13,11 +13,11 @@ import {
   ReloadOutlined,
   CameraOutlined,
 } from '@ant-design/icons';
-import { BadgePreview, BadgeSettings, TextSettings } from '../components';
+import { BadgePreview, BadgeSettings, TextSettings, OBJColorConverter } from '../components';
 import useInteraction from '../hooks/useInteraction';
 import { UNIT_CONFIG } from '../constants/unitConfig';
 
-const { Header, Content, Sider } = Layout;
+const { Header, Content } = Layout;
 const { Title } = Typography;
 
 const BadgeDesigner = () => {
@@ -164,57 +164,62 @@ const BadgeDesigner = () => {
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ background: '#fff', padding: '0 24px', borderBottom: '1px solid #f0f0f0' }}>
+    <Layout style={{ minHeight: '100vh', maxHeight: '100vh', overflow: 'hidden' }}>
+      <Header style={{ 
+        background: '#fff', 
+        padding: '0 16px', 
+        borderBottom: '1px solid #f0f0f0',
+        height: '48px',
+        lineHeight: '48px'
+      }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Title level={3} style={{ margin: 0, color: '#1890ff' }}>
+          <Title level={4} style={{ margin: 0, color: '#1890ff' }}>
             <CameraOutlined style={{ marginRight: 8 }} />
             工牌设计器
           </Title>
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={resetDesign}>
+            <Button icon={<ReloadOutlined />} onClick={resetDesign} size="small">
               重置
             </Button>
-            <Button type="primary" icon={<DownloadOutlined />} onClick={exportBadge}>
+            <Button type="primary" icon={<DownloadOutlined />} onClick={exportBadge} size="small">
               导出OBJ模型
             </Button>
           </Space>
         </div>
       </Header>
 
-      <Layout>
-        <Sider width={320} style={{ background: '#fff', borderRight: '1px solid #f0f0f0' }}>
-          <BadgeSettings
-            badgeSettings={badgeSettings}
-            setBadgeSettings={setBadgeSettings}
-            holeSettings={holeSettings}
-            setHoleSettings={setHoleSettings}
-            imageSettings={imageSettings}
-            setImageSettings={setImageSettings}
-            setSelectedElement={setSelectedElement}
-            UNIT_CONFIG={UNIT_CONFIG}
-            formatSize={formatSize}
-          />
-        </Sider>
-
-        <Content style={{ padding: 24, background: '#f5f5f5' }}>
-          <Row gutter={16} style={{ height: '100%' }}>
-            <Col span={18}>
-              <BadgePreview
-                badgeSettings={badgeSettings}
-                holeSettings={holeSettings}
-                imageSettings={imageSettings}
-                textSettings={textSettings}
-                selectedElement={selectedElement}
-                setSelectedElement={setSelectedElement}
-                interactionState={interactionState}
-                startInteraction={startInteraction}
-                handleDoubleClick={handleDoubleClick}
-                UNIT_CONFIG={UNIT_CONFIG}
-                formatSize={formatSize}
-              />
-            </Col>
-            <Col span={6}>
+      <Content style={{ padding: 12, background: '#f5f5f5', overflow: 'hidden' }}>
+        <Row gutter={12} style={{ height: '100%' }}>
+          <Col span={6}>
+            <BadgeSettings
+              badgeSettings={badgeSettings}
+              setBadgeSettings={setBadgeSettings}
+              holeSettings={holeSettings}
+              setHoleSettings={setHoleSettings}
+              imageSettings={imageSettings}
+              setImageSettings={setImageSettings}
+              setSelectedElement={setSelectedElement}
+              UNIT_CONFIG={UNIT_CONFIG}
+              formatSize={formatSize}
+            />
+          </Col>
+          <Col span={12}>
+            <BadgePreview
+              badgeSettings={badgeSettings}
+              holeSettings={holeSettings}
+              imageSettings={imageSettings}
+              textSettings={textSettings}
+              selectedElement={selectedElement}
+              setSelectedElement={setSelectedElement}
+              interactionState={interactionState}
+              startInteraction={startInteraction}
+              handleDoubleClick={handleDoubleClick}
+              UNIT_CONFIG={UNIT_CONFIG}
+              formatSize={formatSize}
+            />
+          </Col>
+          <Col span={6}>
+            <div style={{ height: '70%', marginBottom: '8px' }}>
               <TextSettings
                 textSettings={textSettings}
                 setTextSettings={setTextSettings}
@@ -224,10 +229,15 @@ const BadgeDesigner = () => {
                 UNIT_CONFIG={UNIT_CONFIG}
                 formatSize={formatSize}
               />
-            </Col>
-          </Row>
-        </Content>
-      </Layout>
+            </div>
+            
+            {/* OBJ颜色转换工具 */}
+            <div style={{ height: '30%' }}>
+              <OBJColorConverter />
+            </div>
+          </Col>
+        </Row>
+      </Content>
     </Layout>
   );
 };

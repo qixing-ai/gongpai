@@ -29,11 +29,16 @@ const BadgeSettings = ({
   };
 
   return (
-    <Card title="工牌设置" style={{ height: '100%', overflowY: 'auto' }}>
-      <Space direction="vertical" style={{ width: '100%' }} size="small">
+    <Card 
+      title="工牌设置" 
+      size="small"
+      style={{ height: '100%', overflowY: 'auto' }}
+      bodyStyle={{ padding: '8px' }}
+    >
+      <Space direction="vertical" style={{ width: '100%' }} size={4}>
         {/* 工牌尺寸设置 */}
-        <div style={{ marginBottom: 16 }}>
-          <Text strong style={{ fontSize: '14px', marginBottom: 8, display: 'block' }}>工牌尺寸</Text>
+        <div style={{ marginBottom: 8 }}>
+          <Text strong style={{ fontSize: '13px', marginBottom: 4, display: 'block' }}>工牌尺寸</Text>
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <div>
               <Text>宽度: {formatSize(badgeSettings.width)}mm</Text>
@@ -81,8 +86,8 @@ const BadgeSettings = ({
         </div>
 
         {/* 穿孔设置 */}
-        <div style={{ marginBottom: 16 }}>
-          <Text strong style={{ fontSize: '14px', marginBottom: 8, display: 'block' }}>穿孔设置</Text>
+        <div style={{ marginBottom: 8 }}>
+          <Text strong style={{ fontSize: '13px', marginBottom: 4, display: 'block' }}>穿孔设置</Text>
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <Radio.Group
               value={holeSettings.enabled}
@@ -186,7 +191,7 @@ const BadgeSettings = ({
 
         {/* 图片设置 */}
         <div>
-          <Text strong style={{ fontSize: '14px', marginBottom: 8, display: 'block' }}>图片设置</Text>
+          <Text strong style={{ fontSize: '13px', marginBottom: 4, display: 'block' }}>图片设置</Text>
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <Upload
               accept="image/*"
