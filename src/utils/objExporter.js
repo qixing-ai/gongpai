@@ -271,29 +271,36 @@ export class BadgeOBJExporter {
     }
   }
 
+  // 计算挖孔参数的通用函数
+  calculateHoleParams(holeSettings, width, height) {
+    const holeX = 0; // 水平居中（在中心坐标系中为0）
+    // 预览中offsetY是挖孔容器顶部的偏移，需要计算挖孔中心位置
+    const holeSize = holeSettings.shape === 'rectangle' ? holeSettings.height : holeSettings.size;
+    const holeY = height / 2 - (holeSettings.offsetY + holeSize / 2); // 挖孔中心在中心坐标系中的位置
+    
+    let holeParams, holeType;
+    
+    if (holeSettings.shape === 'circle') {
+      holeParams = { radius: holeSettings.size / 2, centerX: holeX, centerY: holeY };
+      holeType = 'circle';
+    } else if (holeSettings.shape === 'oval') {
+      holeParams = { width: holeSettings.size, height: holeSettings.size * 0.6, centerX: holeX, centerY: holeY };
+      holeType = 'oval';
+    } else {
+      holeParams = { width: holeSettings.width, height: holeSettings.height, centerX: holeX, centerY: holeY, borderRadius: holeSettings.borderRadius };
+      holeType = 'rectangle';
+    }
+    
+    return { holeParams, holeType };
+  }
+
   // 生成单面模型
   generateSingleSidedModel(outerPoints, holeSettings, width, height, thickness) {
     // 使用单面模式创建顶点和UV（背面将使用白色UV）
     const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, false);
 
     if (holeSettings.enabled) {
-      // 创建孔洞 - 与页面预览保持一致：水平居中，垂直从顶部偏移
-      const holeX = 0; // 水平居中（在中心坐标系中为0）
-      const holeY = height / 2 - holeSettings.offsetY; // 从顶部开始的偏移转换为中心坐标系
-      
-      let holeParams, holeType;
-      
-      if (holeSettings.shape === 'circle') {
-        holeParams = { radius: holeSettings.size / 2, centerX: holeX, centerY: holeY };
-        holeType = 'circle';
-      } else if (holeSettings.shape === 'oval') {
-        holeParams = { width: holeSettings.size, height: holeSettings.size * 0.6, centerX: holeX, centerY: holeY };
-        holeType = 'oval';
-      } else {
-        holeParams = { width: holeSettings.width, height: holeSettings.height, centerX: holeX, centerY: holeY, borderRadius: holeSettings.borderRadius };
-        holeType = 'rectangle';
-      }
-      
+      const { holeParams, holeType } = this.calculateHoleParams(holeSettings, width, height);
       const innerPoints = this.createPoints(holeType, holeParams);
       const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height, false);
 
@@ -323,23 +330,7 @@ export class BadgeOBJExporter {
       const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, true);
 
       if (holeSettings.enabled) {
-        // 创建孔洞 - 与页面预览保持一致：水平居中，垂直从顶部偏移
-        const holeX = 0; // 水平居中（在中心坐标系中为0）
-        const holeY = height / 2 - holeSettings.offsetY; // 从顶部开始的偏移转换为中心坐标系
-        
-        let holeParams, holeType;
-        
-        if (holeSettings.shape === 'circle') {
-          holeParams = { radius: holeSettings.size / 2, centerX: holeX, centerY: holeY };
-          holeType = 'circle';
-        } else if (holeSettings.shape === 'oval') {
-          holeParams = { width: holeSettings.size, height: holeSettings.size * 0.6, centerX: holeX, centerY: holeY };
-          holeType = 'oval';
-        } else {
-          holeParams = { width: holeSettings.width, height: holeSettings.height, centerX: holeX, centerY: holeY, borderRadius: holeSettings.borderRadius };
-          holeType = 'rectangle';
-        }
-        
+        const { holeParams, holeType } = this.calculateHoleParams(holeSettings, width, height);
         const innerPoints = this.createPoints(holeType, holeParams);
         const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height, true);
         
@@ -412,11 +403,11 @@ export class BadgeOBJExporter {
       // 将挖孔位置从页面预览坐标系转换为画布坐标系
       const holeCanvasX = canvasWidth / 2; // 水平居中
       
-      // 与3D模型保持一致的位置计算
-      // 3D模型中挖孔中心：holeY = height / 2 - holeSettings.offsetY
-      // 转换为画布坐标系（左上角为原点）：
-      // 挖孔中心Y = height / 2 + (height / 2 - holeSettings.offsetY) = height - holeSettings.offsetY
-      const holeCenterY = (badgeSettings.height - holeSettings.offsetY) * scaleY;
+      // 与预览完全一致的位置计算：
+      // 预览中：top: holeSettings.offsetY（挖孔容器顶部从工牌顶部的偏移）
+      // 画布中：计算挖孔的中心位置
+      const holeSize = holeSettings.shape === 'rectangle' ? holeSettings.height : holeSettings.size;
+      const holeCenterY = (holeSettings.offsetY + holeSize / 2) * scaleY;
       
       ctx.fillStyle = '#ffffff'; // 挖孔用白色填充
       
@@ -459,10 +450,8 @@ export class BadgeOBJExporter {
       }
     }
     
-    // 确保左下角是白色区域（供单面模型背面使用）
-    ctx.fillStyle = '#ffffff';
-    const whiteAreaSize = Math.min(32, Math.min(canvasWidth, canvasHeight) / 16);
-    ctx.fillRect(0, canvasHeight - whiteAreaSize, whiteAreaSize, whiteAreaSize);
+    // 绘制左下角白色区域（供单面模型背面使用）
+    this.drawWhiteCorner(ctx, canvasWidth, canvasHeight);
     
     // 绘制图片和文字
     if (imageSettings.src) {
@@ -518,8 +507,7 @@ export class BadgeOBJExporter {
           this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY, canvasWidth, canvasHeight);
           // 确保左下角保持白色
           ctx.globalAlpha = 1.0;
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, canvasHeight - whiteAreaSize, whiteAreaSize, whiteAreaSize);
+          this.drawWhiteCorner(ctx, canvasWidth, canvasHeight);
           resolve(canvas);
         };
         img.src = imageSettings.src;
@@ -527,11 +515,16 @@ export class BadgeOBJExporter {
     } else {
       this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY, canvasWidth, canvasHeight);
       // 确保左下角保持白色
-      ctx.fillStyle = '#ffffff';
-      const whiteAreaSize = Math.min(32, Math.min(canvasWidth, canvasHeight) / 16);
-      ctx.fillRect(0, canvasHeight - whiteAreaSize, whiteAreaSize, whiteAreaSize);
+      this.drawWhiteCorner(ctx, canvasWidth, canvasHeight);
       return Promise.resolve(canvas);
     }
+  }
+
+  // 绘制左下角白色区域（供单面模型背面使用）
+  drawWhiteCorner(ctx, canvasWidth, canvasHeight) {
+    ctx.fillStyle = '#ffffff';
+    const whiteAreaSize = Math.min(32, Math.min(canvasWidth, canvasHeight) / 16);
+    ctx.fillRect(0, canvasHeight - whiteAreaSize, whiteAreaSize, whiteAreaSize);
   }
 
   // 绘制文字
@@ -540,16 +533,20 @@ export class BadgeOBJExporter {
     
     ctx.globalAlpha = 1.0;
     ctx.fillStyle = textSettings.color;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top'; // 改为top，与页面预览的定位方式一致
+    ctx.textAlign = 'left'; // 使用left对齐，完全按照预览的定位逻辑
+    ctx.textBaseline = 'top'; // 与页面预览的定位方式一致
     ctx.font = `${textSettings.fontSize * scaleX}px ${textSettings.fontFamily}`;
     
-    // 页面预览使用左上角为原点的坐标系，直接转换到画布坐标系
+    // 直接使用与预览相同的定位逻辑：
+    // textSettings.x 就是文字的起始位置，不做任何偏移计算
+    
     const x = textSettings.x * scaleX;
     const y = textSettings.y * scaleY;
     const lineHeight = textSettings.fontSize * scaleX * textSettings.lineHeight;
     
-    textSettings.content.split('\n').forEach((line, i) => {
+    // 简单的分行处理，与预览完全一致
+    const lines = textSettings.content.split('\n');
+    lines.forEach((line, i) => {
       ctx.fillText(line, x, y + i * lineHeight);
     });
   }
@@ -564,21 +561,21 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
     const mtlContent = exporter.generateMTLContent();
     const textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings);
     
-    // 下载文件
-    const downloads = [
-      { content: objContent, filename: 'badge.obj', type: 'text/plain' },
-      { content: mtlContent, filename: 'badge.mtl', type: 'text/plain' }
-    ];
-    
-    downloads.forEach(({ content, filename, type }) => {
+    // 下载文本文件的通用函数
+    const downloadFile = (content, filename, type = 'text/plain') => {
       const blob = new Blob([content], { type });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = filename;
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-    });
+    };
     
+    // 下载OBJ和MTL文件
+    downloadFile(objContent, 'badge.obj');
+    downloadFile(mtlContent, 'badge.mtl');
+    
+    // 下载贴图文件
     textureCanvas.toBlob(blob => {
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);

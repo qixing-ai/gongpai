@@ -5,7 +5,7 @@ export const UNIT_CONFIG = {
   pxToMm: (px) => px / 3.78,
   
   // 预览缩放
-  PREVIEW_SCALE: 4,
+  PREVIEW_SCALE: 5,
   
   // 尺寸限制 (mm)
   BADGE: {
