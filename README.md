@@ -1,98 +1,145 @@
-# 工牌设计器
+import trimesh
+import numpy as np
+from PIL import Image
 
-一个基于 React + Ant Design 构建的工牌设计工具，提供直观的可视化设计界面和丰富的自定义选项。
+def convert_glb_to_obj_with_color(glb_path, obj_path):
+    """
+    将 GLB 文件转换为带有顶点颜色的 OBJ 文件
+    
+    参数:
+        glb_path: 输入的 GLB 文件路径
+        obj_path: 输出的 OBJ 文件路径
+    """
+    try:
+        # 加载 GLB 文件
+        scene = trimesh.load(glb_path, file_type='glb')
+        
+        # 处理场景或单个网格
+        if isinstance(scene, trimesh.Scene):
+            # 合并场景中的所有网格
+            merged_mesh = trimesh.util.concatenate(
+                [g for g in scene.geometry.values()]
+            )
+        else:
+            merged_mesh = scene
+        
+        # 确保网格有纹理坐标
+        if not merged_mesh.visual.uv is None and merged_mesh.visual.material is not None:
+            # 获取纹理图像
+            if hasattr(merged_mesh.visual.material, 'baseColorTexture'):
+                texture = merged_mesh.visual.material.baseColorTexture
+                if texture is not None:
+                    # 将纹理转换为 NumPy 数组
+                    texture_array = np.array(texture)
+                    
+                    # 获取 UV 坐标
+                    uv = merged_mesh.visual.uv
+                    
+                    # 将 UV 坐标映射到纹理像素位置
+                    # UV 坐标范围 [0,1] 映射到纹理尺寸 [0, width-1] 和 [0, height-1]
+                    tex_width, tex_height = texture.size
+                    u_coords = np.clip(uv[:, 0], 0, 1) * (tex_width - 1)
+                    v_coords = (1 - np.clip(uv[:, 1], 0, 1)) * (tex_height - 1)  # 翻转 V 轴
+                    
+                    # 采样纹理颜色
+                    u_coords = u_coords.astype(int)
+                    v_coords = v_coords.astype(int)
+                    
+                    # 确保坐标在有效范围内
+                    u_coords = np.clip(u_coords, 0, tex_width - 1)
+                    v_coords = np.clip(v_coords, 0, tex_height - 1)
+                    
+                    # 获取颜色值 (RGB)
+                    colors = texture_array[v_coords, u_coords, :3]
+                    
+                    # 创建带有顶点颜色的新网格
+                    colored_mesh = trimesh.Trimesh(
+                        vertices=merged_mesh.vertices,
+                        faces=merged_mesh.faces,
+                        vertex_colors=colors
+                    )
+                    
+                    # 导出为 OBJ
+                    with open(obj_path, 'w') as f:
+                        colored_mesh.export(
+                            f, 
+                            file_type='obj',
+                            include_color=True,
+                            include_normals=False,
+                            include_texture=False
+                        )
+                    print(f"成功导出 OBJ 文件到: {obj_path}")
+                    print(f"顶点数: {len(colored_mesh.vertices)}")
+                    print(f"面数: {len(colored_mesh.faces)}")
+                    return
+                    
+        # 如果没有纹理，尝试使用现有的顶点/面颜色
+        if merged_mesh.visual.kind == 'vertex' and merged_mesh.visual.vertex_colors is not None:
+            # 直接导出顶点颜色
+            with open(obj_path, 'w') as f:
+                merged_mesh.export(
+                    f, 
+                    file_type='obj',
+                    include_color=True,
+                    include_normals=False,
+                    include_texture=False
+                )
+            print(f"使用现有顶点颜色导出 OBJ 文件到: {obj_path}")
+            return
+            
+        elif merged_mesh.visual.kind == 'face' and merged_mesh.visual.face_colors is not None:
+            # 将面颜色转换为顶点颜色
+            face_colors = merged_mesh.visual.face_colors
+            vertex_colors = np.zeros((len(merged_mesh.vertices), 3))
+            
+            # 为每个顶点分配面颜色的平均值
+            for i, face in enumerate(merged_mesh.faces):
+                vertex_colors[face] += face_colors[i, :3]
+                
+            # 计算每个顶点被引用的次数
+            vertex_counts = np.zeros(len(merged_mesh.vertices))
+            for face in merged_mesh.faces:
+                vertex_counts[face] += 1
+                
+            # 避免除以零
+            vertex_counts[vertex_counts == 0] = 1
+            vertex_colors /= vertex_counts[:, np.newaxis]
+            
+            # 创建新网格
+            colored_mesh = trimesh.Trimesh(
+                vertices=merged_mesh.vertices,
+                faces=merged_mesh.faces,
+                vertex_colors=vertex_colors.astype(np.uint8)
+            )
+            
+            # 导出 OBJ
+            with open(obj_path, 'w') as f:
+                colored_mesh.export(
+                    f, 
+                    file_type='obj',
+                    include_color=True,
+                    include_normals=False,
+                    include_texture=False
+                )
+            print(f"将面颜色转换为顶点颜色导出 OBJ 文件到: {obj_path}")
+            return
+        
+        # 如果没有颜色信息
+        print("警告: 未找到颜色信息，导出无颜色的 OBJ")
+        merged_mesh.export(obj_path, file_type='obj')
+        
+    except Exception as e:
+        print(f"转换过程中出错: {e}")
+        raise
 
-## 特性
+# 使用示例
+glb_file = "1.glb"  # 输入 GLB 文件
+obj_file = "1.obj"  # 输出 OBJ 文件
 
-- 🎨 可视化工牌设计界面
-- 📏 工牌尺寸自由调整 (50-120mm × 30-90mm)
-- 🕳️ 穿孔设置 (圆形/矩形/椭圆，可调大小和位置)
-- 🖼️ 图片上传和调整 (尺寸、位置、透明度)
-- ✏️ 文字编辑 (内容、字体、大小、颜色、位置)
-- 🎨 背景颜色和圆角设置
-- 📱 响应式设计，适配各种设备
+convert_glb_to_obj_with_color(glb_file, obj_file)
 
-## 技术栈
 
-- React 18
-- Ant Design 5
-- Webpack 5
-- Babel 7
 
-## 快速开始
+上面是参考代码
 
-### 安装依赖
-
-```bash
-npm install
-```
-
-### 启动开发服务器
-
-```bash
-npm start
-```
-
-访问 [http://localhost:3000](http://localhost:3000) 开始设计工牌。
-
-### 构建生产版本
-
-```bash
-npm run build
-```
-
-## 功能说明
-
-### 工牌尺寸设置
-- **宽度调节**: 50-120mm
-- **高度调节**: 30-90mm  
-- **圆角设置**: 0-20px
-- **背景颜色**: 支持颜色选择器
-
-### 穿孔设置
-- **启用/禁用**: 可选择是否添加穿孔
-- **形状选择**: 圆形、矩形、椭圆
-- **大小调节**: 3-15mm
-- **位置调节**: 垂直偏移 3-20mm
-
-### 图片设置
-- **图片上传**: 支持常见图片格式
-- **尺寸调节**: 宽度和高度独立调整
-- **位置调节**: X、Y 坐标精确定位
-- **透明度**: 0-100% 透明度调节
-
-### 文字设置
-- **内容编辑**: 支持多行文字输入
-- **字体选择**: 微软雅黑、黑体、宋体、Arial
-- **大小调节**: 8-24px
-- **颜色设置**: 支持颜色选择器
-- **位置调节**: X、Y 坐标精确定位
-- **行高调节**: 1.0-2.0 倍行距
-
-## 项目结构
-
-```
-src/
-├── pages/
-│   └── BadgeDesigner.js   # 工牌设计器主页面
-├── App.js                 # 主应用组件
-└── index.js               # 应用入口
-```
-
-## 使用说明
-
-1. **调整工牌尺寸**: 在左侧面板调整工牌的宽度、高度、圆角和背景色
-2. **设置穿孔**: 选择是否需要穿孔，并调整穿孔的形状、大小和位置
-3. **上传图片**: 点击"上传图片"按钮添加图片，并调整图片的尺寸、位置和透明度
-4. **编辑文字**: 在文字内容区域输入文字，并调整字体、大小、颜色和位置
-5. **实时预览**: 右侧区域实时显示工牌设计效果
-6. **导出工牌**: 点击"导出工牌"按钮保存设计 (功能开发中)
-7. **重置设计**: 点击"重置"按钮恢复默认设置
-
-## 开发说明
-
-这是一个纯前端应用，无需后端支持。所有的设计数据都在浏览器本地处理，适合快速原型设计和工牌制作预览。
-
-## 许可证
-
-MIT 
+要求将普通的obj转换成这种顶点带颜色的obj
