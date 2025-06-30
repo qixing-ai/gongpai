@@ -71,6 +71,14 @@ const BadgeDesigner = () => {
   const [exportSettings, setExportSettings] = useState({
     doubleSided: true,    // 双面/单面
     thickness: 2.0,       // 厚度 mm
+    meshDensity: {        // 网格密度设置
+      width: 20,          // 宽度方向分段数
+      height: 20          // 高度方向分段数
+    },
+    meshQuality: {        // 网格质量设置
+      enableBoundaryConnection: true,  // 是否启用边界连接
+      maxBoundaryConnections: 3        // 最大边界连接数
+    }
   });
 
   // 使用交互Hook
@@ -158,6 +166,14 @@ const BadgeDesigner = () => {
     setExportSettings({
       doubleSided: true,
       thickness: formatSize(2.0, 1),
+      meshDensity: {
+        width: 20,
+        height: 20
+      },
+      meshQuality: {
+        enableBoundaryConnection: true,
+        maxBoundaryConnections: 3
+      }
     });
     setSelectedElement(null);
     message.success('设计已重置');

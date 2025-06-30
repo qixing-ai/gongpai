@@ -5,6 +5,23 @@ export class BadgeOBJExporter {
     this.uvs = [];
     this.faces = [];
     this.vertexIndex = 1;
+    // 网格划分密度设置
+    this.meshDensity = { width: 20, height: 20 }; // 默认20x20网格
+    // 网格质量设置
+    this.meshQuality = { 
+      enableBoundaryConnection: true,  // 是否启用边界连接
+      maxBoundaryConnections: 3        // 最大边界连接数
+    };
+  }
+
+  // 设置网格密度
+  setMeshDensity(widthSegments, heightSegments) {
+    this.meshDensity = { width: widthSegments, height: heightSegments };
+  }
+
+  // 设置网格质量
+  setMeshQuality(enableBoundaryConnection = true, maxBoundaryConnections = 3) {
+    this.meshQuality = { enableBoundaryConnection, maxBoundaryConnections };
   }
 
   // 添加顶点
@@ -145,42 +162,35 @@ export class BadgeOBJExporter {
     return { vertices, uvs };
   }
 
-  // 生成面（正面、背面、侧面）- 水密版
-  generateFaces(vertices, uvs, pointCount, hasHole = false, holeVertices = [], holeUVs = [], thickness = 2.0) {
+  // 生成面（正面、背面、侧面）- 水密版 - 支持网格化
+  generateFaces(vertices, uvs, pointCount, hasHole = false, holeVertices = [], holeUVs = [], thickness = 2.0, badgeSettings) {
     if (hasHole) {
-      // 带孔洞的水密面生成
+      // 带孔洞的网格化面生成
       const holePointCount = holeUVs.length / 2;
       
-      // 正面
-      this.createWatertightHoleFaces(
+      // 正面网格化
+      this.createMeshFacesWithHole(
         vertices.slice(0, pointCount), uvs.slice(0, pointCount),
         holeVertices.slice(0, holePointCount), holeUVs.slice(0, holePointCount),
-        true
+        true, badgeSettings, thickness
       );
       
-      // 背面
-      this.createWatertightHoleFaces(
+      // 背面网格化
+      this.createMeshFacesWithHole(
         vertices.slice(pointCount), uvs.slice(pointCount),
         holeVertices.slice(holePointCount), holeUVs.slice(holePointCount),
-        false
+        false, badgeSettings, thickness
       );
     } else {
-      // 普通面 - 使用实际厚度
-      const centerFront = this.addVertex(0, 0, thickness / 2);
-      const centerBack = this.addVertex(0, 0, -thickness / 2);
-      const centerUV = this.addUV(0.5, 0.5);
-      
-      // 正面 - 确保法线向前（顺时针顺序）
-      for (let i = 0; i < pointCount; i++) {
-        const next = (i + 1) % pointCount;
-        this.addFace(centerFront, vertices[i], vertices[next], centerUV, uvs[i], uvs[next]);
-      }
-      
-      // 背面 - 确保法线向后（逆时针顺序）
-      for (let i = 0; i < pointCount; i++) {
-        const next = (i + 1) % pointCount;
-        this.addFace(centerBack, vertices[pointCount + next], vertices[pointCount + i], centerUV, uvs[pointCount + next], uvs[pointCount + i]);
-      }
+      // 普通面的网格化生成
+      this.createMeshFaces(
+        vertices.slice(0, pointCount), uvs.slice(0, pointCount),
+        true, badgeSettings, thickness
+      );
+      this.createMeshFaces(
+        vertices.slice(pointCount), uvs.slice(pointCount),
+        false, badgeSettings, thickness
+      );
     }
     
     // 外侧面
@@ -192,60 +202,251 @@ export class BadgeOBJExporter {
     }
   }
 
-  // 水密孔洞连接算法 - 修复重复顶点问题
-  createWatertightHoleFaces(outerVertices, outerUVs, innerVertices, innerUVs, isFront) {
-    const outerCount = outerVertices.length;
-    const innerCount = innerVertices.length;
+  // 创建网格化面（无孔洞）
+  createMeshFaces(boundaryVertices, boundaryUVs, isFront, badgeSettings, thickness) {
+    const { width, height } = badgeSettings;
+    const z = isFront ? thickness / 2 : -thickness / 2;
     
-    // 使用更大的分段数来避免重复索引
-    const segments = Math.max(outerCount, innerCount);
+    // 创建网格顶点
+    const meshVertices = [];
+    const meshUVs = [];
     
-    // 生成连接面
-    for (let i = 0; i < segments; i++) {
-      // 计算外轮廓索引（均匀分布）
-      const outerIdx1 = Math.floor(i * outerCount / segments) % outerCount;
-      const outerIdx2 = Math.floor((i + 1) * outerCount / segments) % outerCount;
-      
-      // 计算内轮廓索引（均匀分布）
-      const innerIdx1 = Math.floor(i * innerCount / segments) % innerCount;
-      const innerIdx2 = Math.floor((i + 1) * innerCount / segments) % innerCount;
-      
-      // 获取顶点和UV
-      const ov1 = outerVertices[outerIdx1];
-      const ov2 = outerVertices[outerIdx2];
-      const iv1 = innerVertices[innerIdx1];
-      const iv2 = innerVertices[innerIdx2];
-      
-      const ouv1 = outerUVs[outerIdx1];
-      const ouv2 = outerUVs[outerIdx2];
-      const iuv1 = innerUVs[innerIdx1];
-      const iuv2 = innerUVs[innerIdx2];
-      
-      // 检查是否有重复顶点，避免退化三角形
-      if (this.isValidTriangle(ov1, ov2, iv1) && this.isValidTriangle(ov2, iv2, iv1)) {
-        if (isFront) {
-          // 正面：确保法线向前
-          this.addFace(ov1, ov2, iv1, ouv1, ouv2, iuv1);
-          this.addFace(ov2, iv2, iv1, ouv2, iuv2, iuv1);
+    // 生成网格内部顶点
+    for (let j = 0; j <= this.meshDensity.height; j++) {
+      for (let i = 0; i <= this.meshDensity.width; i++) {
+        const u = i / this.meshDensity.width;
+        const v = j / this.meshDensity.height;
+        
+        // 计算网格点在工牌范围内的坐标
+        const x = (u - 0.5) * width;
+        const y = (v - 0.5) * height;
+        
+        // 检查点是否在边界内
+        if (this.isPointInPolygon(x, y, boundaryVertices)) {
+          const vertexIndex = this.addVertex(x, y, z);
+          // 背面使用镜像UV坐标
+          const uvU = isFront ? u : (1.0 - u);
+          const uvV = v;
+          const uvIndex = this.addUV(uvU, uvV);
+          meshVertices.push({ index: vertexIndex, x, y, gridX: i, gridY: j });
+          meshUVs.push(uvIndex);
         } else {
-          // 背面：确保法线向后
-          this.addFace(ov1, iv1, ov2, ouv1, iuv1, ouv2);
-          this.addFace(ov2, iv1, iv2, ouv2, iuv1, iuv2);
+          meshVertices.push(null);
+          meshUVs.push(null);
         }
-      } else {
-        // 如果检测到退化三角形，使用单个三角形填充
-        if (this.isValidTriangle(ov1, iv1, ov2)) {
+      }
+    }
+    
+    // 生成网格三角形
+    for (let j = 0; j < this.meshDensity.height; j++) {
+      for (let i = 0; i < this.meshDensity.width; i++) {
+        const idx = j * (this.meshDensity.width + 1) + i;
+        const v1 = meshVertices[idx];
+        const v2 = meshVertices[idx + 1];
+        const v3 = meshVertices[idx + this.meshDensity.width + 1];
+        const v4 = meshVertices[idx + this.meshDensity.width + 2];
+        
+        const uv1 = meshUVs[idx];
+        const uv2 = meshUVs[idx + 1];
+        const uv3 = meshUVs[idx + this.meshDensity.width + 1];
+        const uv4 = meshUVs[idx + this.meshDensity.width + 2];
+        
+        // 生成两个三角形（如果所有顶点都存在）
+        if (v1 && v2 && v3) {
           if (isFront) {
-            this.addFace(ov1, ov2, iv1, ouv1, ouv2, iuv1);
+            this.addFace(v1.index, v2.index, v3.index, uv1, uv2, uv3);
           } else {
-            this.addFace(ov1, iv1, ov2, ouv1, iuv1, ouv2);
+            this.addFace(v1.index, v3.index, v2.index, uv1, uv3, uv2);
+          }
+        }
+        
+        if (v2 && v3 && v4) {
+          if (isFront) {
+            this.addFace(v2.index, v4.index, v3.index, uv2, uv4, uv3);
+          } else {
+            this.addFace(v2.index, v3.index, v4.index, uv2, uv3, uv4);
+          }
+        }
+      }
+    }
+    
+    // 根据质量设置决定是否进行边界连接
+    if (this.meshQuality.enableBoundaryConnection) {
+      this.createSimpleBoundaryConnection(meshVertices, meshUVs, boundaryVertices, boundaryUVs, isFront);
+    }
+  }
+
+  // 创建带孔洞的网格化面
+  createMeshFacesWithHole(outerVertices, outerUVs, innerVertices, innerUVs, isFront, badgeSettings, thickness) {
+    const { width, height } = badgeSettings;
+    const z = isFront ? thickness / 2 : -thickness / 2;
+    
+    // 创建网格顶点
+    const meshVertices = [];
+    const meshUVs = [];
+    
+    // 生成网格内部顶点
+    for (let j = 0; j <= this.meshDensity.height; j++) {
+      for (let i = 0; i <= this.meshDensity.width; i++) {
+        const u = i / this.meshDensity.width;
+        const v = j / this.meshDensity.height;
+        
+        // 计算网格点在工牌范围内的坐标
+        const x = (u - 0.5) * width;
+        const y = (v - 0.5) * height;
+        
+        // 检查点是否在外边界内且不在孔洞内
+        if (this.isPointInPolygon(x, y, outerVertices) && !this.isPointInPolygon(x, y, innerVertices)) {
+          const vertexIndex = this.addVertex(x, y, z);
+          // 背面使用镜像UV坐标
+          const uvU = isFront ? u : (1.0 - u);
+          const uvV = v;
+          const uvIndex = this.addUV(uvU, uvV);
+          meshVertices.push({ index: vertexIndex, x, y, gridX: i, gridY: j });
+          meshUVs.push(uvIndex);
+        } else {
+          meshVertices.push(null);
+          meshUVs.push(null);
+        }
+      }
+    }
+    
+    // 生成网格三角形（与无孔洞版本相同）
+    for (let j = 0; j < this.meshDensity.height; j++) {
+      for (let i = 0; i < this.meshDensity.width; i++) {
+        const idx = j * (this.meshDensity.width + 1) + i;
+        const v1 = meshVertices[idx];
+        const v2 = meshVertices[idx + 1];
+        const v3 = meshVertices[idx + this.meshDensity.width + 1];
+        const v4 = meshVertices[idx + this.meshDensity.width + 2];
+        
+        const uv1 = meshUVs[idx];
+        const uv2 = meshUVs[idx + 1];
+        const uv3 = meshUVs[idx + this.meshDensity.width + 1];
+        const uv4 = meshUVs[idx + this.meshDensity.width + 2];
+        
+        // 生成两个三角形（如果所有顶点都存在）
+        if (v1 && v2 && v3) {
+          if (isFront) {
+            this.addFace(v1.index, v2.index, v3.index, uv1, uv2, uv3);
+          } else {
+            this.addFace(v1.index, v3.index, v2.index, uv1, uv3, uv2);
+          }
+        }
+        
+        if (v2 && v3 && v4) {
+          if (isFront) {
+            this.addFace(v2.index, v4.index, v3.index, uv2, uv4, uv3);
+          } else {
+            this.addFace(v2.index, v3.index, v4.index, uv2, uv3, uv4);
+          }
+        }
+      }
+    }
+    
+    // 根据质量设置决定是否进行边界连接
+    if (this.meshQuality.enableBoundaryConnection) {
+      this.createSimpleBoundaryConnection(meshVertices, meshUVs, outerVertices, outerUVs, isFront);
+      this.createSimpleBoundaryConnection(meshVertices, meshUVs, innerVertices, innerUVs, isFront, true);
+    }
+  }
+
+  // 简化的边界连接算法 - 减少凌乱的三角形
+  createSimpleBoundaryConnection(meshVertices, meshUVs, boundaryVertices, boundaryUVs, isFront, isHole = false) {
+    const validMeshVertices = meshVertices.filter(v => v !== null);
+    if (validMeshVertices.length === 0) return;
+    
+    // 计算边界中心点
+    const boundaryPoints = boundaryVertices.map(v => this.vertices[v - 1]);
+    const centerX = boundaryPoints.reduce((sum, p) => sum + p.x, 0) / boundaryPoints.length;
+    const centerY = boundaryPoints.reduce((sum, p) => sum + p.y, 0) / boundaryPoints.length;
+    
+    // 找到距离边界中心最近的网格顶点
+    const sortedVertices = validMeshVertices
+      .map(mv => ({
+        ...mv,
+        distance: Math.sqrt((mv.x - centerX) ** 2 + (mv.y - centerY) ** 2)
+      }))
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, Math.min(this.meshQuality.maxBoundaryConnections, validMeshVertices.length));
+    
+    // 如果网格顶点足够多，只创建必要的连接三角形
+    if (sortedVertices.length >= 2) {
+      // 选择最近的2个顶点，创建少量连接三角形
+      const v1 = sortedVertices[0];
+      const v2 = sortedVertices[1];
+      
+      // 为边界的前几个顶点创建连接
+      for (let i = 0; i < Math.min(3, boundaryVertices.length); i++) {
+        const bv = boundaryVertices[i];
+        const buv = boundaryUVs[i];
+        const meshUV1 = meshUVs[v1.gridY * (this.meshDensity.width + 1) + v1.gridX];
+        const meshUV2 = meshUVs[v2.gridY * (this.meshDensity.width + 1) + v2.gridX];
+        
+        if (meshUV1 && meshUV2) {
+          if (isHole) {
+            // 孔洞边界：内向法线
+            if (isFront) {
+              this.addFace(bv, v1.index, v2.index, buv, meshUV1, meshUV2);
+            } else {
+              this.addFace(bv, v2.index, v1.index, buv, meshUV2, meshUV1);
+            }
+          } else {
+            // 外边界：外向法线
+            if (isFront) {
+              this.addFace(bv, v2.index, v1.index, buv, meshUV2, meshUV1);
+            } else {
+              this.addFace(bv, v1.index, v2.index, buv, meshUV1, meshUV2);
+            }
+          }
+        }
+      }
+    } else if (sortedVertices.length === 1) {
+      // 只有一个网格顶点时，创建更少的连接
+      const v = sortedVertices[0];
+      const meshUV = meshUVs[v.gridY * (this.meshDensity.width + 1) + v.gridX];
+      
+      if (meshUV && boundaryVertices.length >= 2) {
+        const bv1 = boundaryVertices[0];
+        const bv2 = boundaryVertices[1];
+        const buv1 = boundaryUVs[0];
+        const buv2 = boundaryUVs[1];
+        
+        if (isHole) {
+          if (isFront) {
+            this.addFace(bv1, v.index, bv2, buv1, meshUV, buv2);
+          } else {
+            this.addFace(bv1, bv2, v.index, buv1, buv2, meshUV);
+          }
+        } else {
+          if (isFront) {
+            this.addFace(bv1, bv2, v.index, buv1, buv2, meshUV);
+          } else {
+            this.addFace(bv1, v.index, bv2, buv1, meshUV, buv2);
           }
         }
       }
     }
   }
 
-  // 检查三角形是否有效（无重复顶点）
+  // 判断点是否在多边形内（射线法）
+  isPointInPolygon(x, y, vertices) {
+    let inside = false;
+    const vertexData = vertices.map(v => this.vertices[v - 1]);
+    
+    for (let i = 0, j = vertexData.length - 1; i < vertexData.length; j = i++) {
+      const xi = vertexData[i].x, yi = vertexData[i].y;
+      const xj = vertexData[j].x, yj = vertexData[j].y;
+      
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+    }
+    
+         return inside;
+   }
+
+  // 检查三角形是否有效（无重复顶点）- 保留以备后用
   isValidTriangle(v1, v2, v3) {
     return v1 !== v2 && v2 !== v3 && v1 !== v3;
   }
@@ -304,12 +505,12 @@ export class BadgeOBJExporter {
       const innerPoints = this.createPoints(holeType, holeParams);
       const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height, false);
 
-      // 生成完整的带孔洞模型（包括正面、背面、侧面）
-      this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs, thickness);
-    } else {
-      // 生成完整的普通模型（包括正面、背面、侧面）
-      this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, false, [], [], thickness);
-    }
+              // 生成完整的带孔洞模型（包括正面、背面、侧面）
+        this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs, thickness, { width, height });
+      } else {
+        // 生成完整的普通模型（包括正面、背面、侧面）
+        this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, false, [], [], thickness, { width, height });
+      }
   }
 
   // 主要生成函数
@@ -334,9 +535,9 @@ export class BadgeOBJExporter {
         const innerPoints = this.createPoints(holeType, holeParams);
         const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height, true);
         
-        this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs, thickness);
+        this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs, thickness, badgeSettings);
       } else {
-        this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, false, [], [], thickness);
+        this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, false, [], [], thickness, badgeSettings);
       }
     } else {
       // 单面模型 - 只创建正面
@@ -348,7 +549,9 @@ export class BadgeOBJExporter {
 
   // 生成OBJ文件内容
   generateOBJContent(badgeSettings, imageSettings, textSettings, exportSettings) {
-    let obj = `# 水密工牌 OBJ 模型\n# 尺寸: ${badgeSettings.width}mm x ${badgeSettings.height}mm x ${exportSettings.thickness}mm\n# 生成时间: ${new Date().toLocaleString('zh-CN')}\n# 特性: 水密结构，适合3D打印\n\n`;
+    const faceCount = this.faces.length;
+    const vertexCount = this.vertices.length;
+    let obj = `# 水密工牌 OBJ 模型 - 网格化版本\n# 尺寸: ${badgeSettings.width}mm x ${badgeSettings.height}mm x ${exportSettings.thickness}mm\n# 网格密度: ${this.meshDensity.width}x${this.meshDensity.height}\n# 顶点数: ${vertexCount}, 面数: ${faceCount}\n# 生成时间: ${new Date().toLocaleString('zh-CN')}\n# 特性: 水密结构，密集网格化三角面，适合3D打印和后续操作\n\n`;
     
     obj += '# 顶点坐标\n';
     this.vertices.forEach(v => obj += `v ${v.x.toFixed(6)} ${v.y.toFixed(6)} ${v.z.toFixed(6)}\n`);
@@ -364,7 +567,7 @@ export class BadgeOBJExporter {
 
   // 生成MTL材质文件
   generateMTLContent() {
-    return `# 工牌材质文件\nnewmtl badge_material\nKa 0.2 0.2 0.2\nKd 0.8 0.8 0.8\nKs 0.1 0.1 0.1\nNs 10.0\nd 1.0\nillum 2\nmap_Kd badge_texture.png\n`;
+    return `# 工牌材质文件 - 网格化版本\n# 生成时间: ${new Date().toLocaleString('zh-CN')}\n# 优化特性: 密集网格三角面，便于后续操作\nnewmtl badge_material\nKa 0.2 0.2 0.2\nKd 0.8 0.8 0.8\nKs 0.1 0.1 0.1\nNs 10.0\nd 1.0\nillum 2\nmap_Kd badge_texture.png\n`;
   }
 
   // 生成贴图
@@ -553,10 +756,28 @@ export class BadgeOBJExporter {
 }
 
 // 导出函数
-export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings = { doubleSided: true, thickness: 2.0 }) {
+export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings = { 
+  doubleSided: true, 
+  thickness: 2.0, 
+  meshDensity: { width: 20, height: 20 },
+  meshQuality: { enableBoundaryConnection: true, maxBoundaryConnections: 3 }
+}) {
   const exporter = new BadgeOBJExporter();
   
   try {
+    // 设置网格密度
+    if (exportSettings.meshDensity) {
+      exporter.setMeshDensity(exportSettings.meshDensity.width || 20, exportSettings.meshDensity.height || 20);
+    }
+    
+    // 设置网格质量
+    if (exportSettings.meshQuality) {
+      exporter.setMeshQuality(
+        exportSettings.meshQuality.enableBoundaryConnection !== false, 
+        exportSettings.meshQuality.maxBoundaryConnections || 3
+      );
+    }
+    
     const objContent = exporter.generateBadgeOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings);
     const mtlContent = exporter.generateMTLContent();
     const textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings);
@@ -585,9 +806,13 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
     }, 'image/png');
     
     const modelType = exportSettings.doubleSided ? '双面' : '单面';
+    const meshInfo = `${exporter.meshDensity.width}x${exporter.meshDensity.height}`;
+    const qualityInfo = exporter.meshQuality.enableBoundaryConnection ? 
+      `边界连接: ${exporter.meshQuality.maxBoundaryConnections}个` : '边界连接: 已禁用';
+    
     return { 
       success: true, 
-      message: `${modelType}工牌OBJ模型导出成功！\n厚度: ${exportSettings.thickness}mm\n已下载3个文件：badge.obj、badge.mtl、badge_texture.png\n✅ 模型已优化为水密结构，适合3D打印` 
+      message: `${modelType}工牌OBJ模型导出成功！\n厚度: ${exportSettings.thickness}mm\n网格密度: ${meshInfo}\n${qualityInfo}\n已下载3个文件：badge.obj、badge.mtl、badge_texture.png\n✅ 模型已优化为水密结构，采用密集网格化三角面，便于后续操作` 
     };
   } catch (error) {
     return { success: false, message: '导出失败：' + error.message };

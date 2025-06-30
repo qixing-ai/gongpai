@@ -134,6 +134,79 @@ const TextSettings = ({
               size="small"
             />
           </div>
+          
+          <div>
+            <Text>网格密度</Text>
+            <div style={{ marginTop: 4 }}>
+              <Text style={{ fontSize: '12px' }}>宽度: {exportSettings.meshDensity?.width || 20}</Text>
+              <Slider
+                min={10}
+                max={1000}
+                step={5}
+                value={exportSettings.meshDensity?.width || 20}
+                onChange={(value) => setExportSettings(prev => ({ 
+                  ...prev, 
+                  meshDensity: { ...prev.meshDensity, width: value }
+                }))}
+                size="small"
+              />
+              <Text style={{ fontSize: '12px' }}>高度: {exportSettings.meshDensity?.height || 20}</Text>
+              <Slider
+                min={10}
+                max={1000}
+                step={5}
+                value={exportSettings.meshDensity?.height || 20}
+                onChange={(value) => setExportSettings(prev => ({ 
+                  ...prev, 
+                  meshDensity: { ...prev.meshDensity, height: value }
+                }))}
+                size="small"
+              />
+              <Text style={{ fontSize: '11px', color: '#666' }}>
+                密度越高，三角面越密集。超高密度(&gt;200)会显著增加文件大小和处理时间
+              </Text>
+            </div>
+          </div>
+          
+          <div>
+            <Text>网格质量</Text>
+            <div style={{ marginTop: 4 }}>
+              <div style={{ marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={exportSettings.meshQuality?.enableBoundaryConnection !== false}
+                  onChange={(e) => setExportSettings(prev => ({ 
+                    ...prev, 
+                    meshQuality: { 
+                      ...prev.meshQuality, 
+                      enableBoundaryConnection: e.target.checked 
+                    }
+                  }))}
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={{ fontSize: '12px' }}>启用边界连接</Text>
+              </div>
+              {exportSettings.meshQuality?.enableBoundaryConnection !== false && (
+                <div>
+                  <Text style={{ fontSize: '12px' }}>最大连接数: {exportSettings.meshQuality?.maxBoundaryConnections || 3}</Text>
+                  <Slider
+                    min={1}
+                    max={8}
+                    step={1}
+                    value={exportSettings.meshQuality?.maxBoundaryConnections || 3}
+                    onChange={(value) => setExportSettings(prev => ({ 
+                      ...prev, 
+                      meshQuality: { ...prev.meshQuality, maxBoundaryConnections: value }
+                    }))}
+                    size="small"
+                  />
+                  <Text style={{ fontSize: '11px', color: '#666' }}>
+                    连接数越少，背面越干净，但可能影响水密性
+                  </Text>
+                </div>
+              )}
+            </div>
+          </div>
         </Space>
       </Card>
     </div>
