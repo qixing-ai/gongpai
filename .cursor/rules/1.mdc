@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+不需要每次都npm启动,因为我已经一直启动这一个服务了
