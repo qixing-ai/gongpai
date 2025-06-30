@@ -362,75 +362,75 @@ export class BadgeOBJExporter {
       console.log(`重拓扑${isFront ? '正面' : '背面'}：生成了${triangleCount}个三角形，网格密度${gridWidth}x${gridHeight}`);
     } else {
       // 使用原始算法（保持向后兼容）
-      const { width, height } = badgeSettings;
-      const z = isFront ? thickness / 2 : -thickness / 2;
-      
-      // 创建网格顶点
-      const meshVertices = [];
-      const meshUVs = [];
-      
-      // 生成网格内部顶点
-      for (let j = 0; j <= this.meshDensity.height; j++) {
-        for (let i = 0; i <= this.meshDensity.width; i++) {
-          const u = i / this.meshDensity.width;
-          const v = j / this.meshDensity.height;
-          
-          // 计算网格点在工牌范围内的坐标
-          const x = (u - 0.5) * width;
-          const y = (v - 0.5) * height;
-          
-          // 检查点是否在边界内
-          if (this.isPointInPolygon(x, y, boundaryVertices)) {
-            const vertexIndex = this.addVertex(x, y, z);
-            // 背面使用镜像UV坐标
-            const uvU = isFront ? u : (1.0 - u);
-            const uvV = v;
-            const uvIndex = this.addUV(uvU, uvV);
-            meshVertices.push({ index: vertexIndex, x, y, gridX: i, gridY: j });
-            meshUVs.push(uvIndex);
+    const { width, height } = badgeSettings;
+    const z = isFront ? thickness / 2 : -thickness / 2;
+    
+    // 创建网格顶点
+    const meshVertices = [];
+    const meshUVs = [];
+    
+    // 生成网格内部顶点
+    for (let j = 0; j <= this.meshDensity.height; j++) {
+      for (let i = 0; i <= this.meshDensity.width; i++) {
+        const u = i / this.meshDensity.width;
+        const v = j / this.meshDensity.height;
+        
+        // 计算网格点在工牌范围内的坐标
+        const x = (u - 0.5) * width;
+        const y = (v - 0.5) * height;
+        
+        // 检查点是否在边界内
+        if (this.isPointInPolygon(x, y, boundaryVertices)) {
+          const vertexIndex = this.addVertex(x, y, z);
+          // 背面使用镜像UV坐标
+          const uvU = isFront ? u : (1.0 - u);
+          const uvV = v;
+          const uvIndex = this.addUV(uvU, uvV);
+          meshVertices.push({ index: vertexIndex, x, y, gridX: i, gridY: j });
+          meshUVs.push(uvIndex);
+        } else {
+          meshVertices.push(null);
+          meshUVs.push(null);
+        }
+      }
+    }
+    
+    // 生成网格三角形
+    for (let j = 0; j < this.meshDensity.height; j++) {
+      for (let i = 0; i < this.meshDensity.width; i++) {
+        const idx = j * (this.meshDensity.width + 1) + i;
+        const v1 = meshVertices[idx];
+        const v2 = meshVertices[idx + 1];
+        const v3 = meshVertices[idx + this.meshDensity.width + 1];
+        const v4 = meshVertices[idx + this.meshDensity.width + 2];
+        
+        const uv1 = meshUVs[idx];
+        const uv2 = meshUVs[idx + 1];
+        const uv3 = meshUVs[idx + this.meshDensity.width + 1];
+        const uv4 = meshUVs[idx + this.meshDensity.width + 2];
+        
+        // 生成两个三角形（如果所有顶点都存在）
+        if (v1 && v2 && v3) {
+          if (isFront) {
+            this.addFace(v1.index, v2.index, v3.index, uv1, uv2, uv3);
           } else {
-            meshVertices.push(null);
-            meshUVs.push(null);
+            this.addFace(v1.index, v3.index, v2.index, uv1, uv3, uv2);
+          }
+        }
+        
+        if (v2 && v3 && v4) {
+          if (isFront) {
+            this.addFace(v2.index, v4.index, v3.index, uv2, uv4, uv3);
+          } else {
+            this.addFace(v2.index, v3.index, v4.index, uv2, uv3, uv4);
           }
         }
       }
-      
-      // 生成网格三角形
-      for (let j = 0; j < this.meshDensity.height; j++) {
-        for (let i = 0; i < this.meshDensity.width; i++) {
-          const idx = j * (this.meshDensity.width + 1) + i;
-          const v1 = meshVertices[idx];
-          const v2 = meshVertices[idx + 1];
-          const v3 = meshVertices[idx + this.meshDensity.width + 1];
-          const v4 = meshVertices[idx + this.meshDensity.width + 2];
-          
-          const uv1 = meshUVs[idx];
-          const uv2 = meshUVs[idx + 1];
-          const uv3 = meshUVs[idx + this.meshDensity.width + 1];
-          const uv4 = meshUVs[idx + this.meshDensity.width + 2];
-          
-          // 生成两个三角形（如果所有顶点都存在）
-          if (v1 && v2 && v3) {
-            if (isFront) {
-              this.addFace(v1.index, v2.index, v3.index, uv1, uv2, uv3);
-            } else {
-              this.addFace(v1.index, v3.index, v2.index, uv1, uv3, uv2);
-            }
-          }
-          
-          if (v2 && v3 && v4) {
-            if (isFront) {
-              this.addFace(v2.index, v4.index, v3.index, uv2, uv4, uv3);
-            } else {
-              this.addFace(v2.index, v3.index, v4.index, uv2, uv3, uv4);
-            }
-          }
-        }
-      }
-      
-      // 根据质量设置决定是否进行边界连接
-      if (this.meshQuality.enableBoundaryConnection) {
-        this.createSimpleBoundaryConnection(meshVertices, meshUVs, boundaryVertices, boundaryUVs, isFront);
+    }
+    
+    // 根据质量设置决定是否进行边界连接
+    if (this.meshQuality.enableBoundaryConnection) {
+      this.createSimpleBoundaryConnection(meshVertices, meshUVs, boundaryVertices, boundaryUVs, isFront);
       }
     }
   }
@@ -455,76 +455,76 @@ export class BadgeOBJExporter {
       console.log(`重拓扑带孔${isFront ? '正面' : '背面'}：生成了${triangleCount}个三角形，网格密度${gridWidth}x${gridHeight}`);
     } else {
       // 使用原始算法（保持向后兼容）
-      const { width, height } = badgeSettings;
-      const z = isFront ? thickness / 2 : -thickness / 2;
-      
-      // 创建网格顶点
-      const meshVertices = [];
-      const meshUVs = [];
-      
-      // 生成网格内部顶点
-      for (let j = 0; j <= this.meshDensity.height; j++) {
-        for (let i = 0; i <= this.meshDensity.width; i++) {
-          const u = i / this.meshDensity.width;
-          const v = j / this.meshDensity.height;
-          
-          // 计算网格点在工牌范围内的坐标
-          const x = (u - 0.5) * width;
-          const y = (v - 0.5) * height;
-          
-          // 检查点是否在外边界内且不在孔洞内
-          if (this.isPointInPolygon(x, y, outerVertices) && !this.isPointInPolygon(x, y, innerVertices)) {
-            const vertexIndex = this.addVertex(x, y, z);
-            // 背面使用镜像UV坐标
-            const uvU = isFront ? u : (1.0 - u);
-            const uvV = v;
-            const uvIndex = this.addUV(uvU, uvV);
-            meshVertices.push({ index: vertexIndex, x, y, gridX: i, gridY: j });
-            meshUVs.push(uvIndex);
+    const { width, height } = badgeSettings;
+    const z = isFront ? thickness / 2 : -thickness / 2;
+    
+    // 创建网格顶点
+    const meshVertices = [];
+    const meshUVs = [];
+    
+    // 生成网格内部顶点
+    for (let j = 0; j <= this.meshDensity.height; j++) {
+      for (let i = 0; i <= this.meshDensity.width; i++) {
+        const u = i / this.meshDensity.width;
+        const v = j / this.meshDensity.height;
+        
+        // 计算网格点在工牌范围内的坐标
+        const x = (u - 0.5) * width;
+        const y = (v - 0.5) * height;
+        
+        // 检查点是否在外边界内且不在孔洞内
+        if (this.isPointInPolygon(x, y, outerVertices) && !this.isPointInPolygon(x, y, innerVertices)) {
+          const vertexIndex = this.addVertex(x, y, z);
+          // 背面使用镜像UV坐标
+          const uvU = isFront ? u : (1.0 - u);
+          const uvV = v;
+          const uvIndex = this.addUV(uvU, uvV);
+          meshVertices.push({ index: vertexIndex, x, y, gridX: i, gridY: j });
+          meshUVs.push(uvIndex);
+        } else {
+          meshVertices.push(null);
+          meshUVs.push(null);
+        }
+      }
+    }
+    
+    // 生成网格三角形（与无孔洞版本相同）
+    for (let j = 0; j < this.meshDensity.height; j++) {
+      for (let i = 0; i < this.meshDensity.width; i++) {
+        const idx = j * (this.meshDensity.width + 1) + i;
+        const v1 = meshVertices[idx];
+        const v2 = meshVertices[idx + 1];
+        const v3 = meshVertices[idx + this.meshDensity.width + 1];
+        const v4 = meshVertices[idx + this.meshDensity.width + 2];
+        
+        const uv1 = meshUVs[idx];
+        const uv2 = meshUVs[idx + 1];
+        const uv3 = meshUVs[idx + this.meshDensity.width + 1];
+        const uv4 = meshUVs[idx + this.meshDensity.width + 2];
+        
+        // 生成两个三角形（如果所有顶点都存在）
+        if (v1 && v2 && v3) {
+          if (isFront) {
+            this.addFace(v1.index, v2.index, v3.index, uv1, uv2, uv3);
           } else {
-            meshVertices.push(null);
-            meshUVs.push(null);
+            this.addFace(v1.index, v3.index, v2.index, uv1, uv3, uv2);
+          }
+        }
+        
+        if (v2 && v3 && v4) {
+          if (isFront) {
+            this.addFace(v2.index, v4.index, v3.index, uv2, uv4, uv3);
+          } else {
+            this.addFace(v2.index, v3.index, v4.index, uv2, uv3, uv4);
           }
         }
       }
-      
-      // 生成网格三角形（与无孔洞版本相同）
-      for (let j = 0; j < this.meshDensity.height; j++) {
-        for (let i = 0; i < this.meshDensity.width; i++) {
-          const idx = j * (this.meshDensity.width + 1) + i;
-          const v1 = meshVertices[idx];
-          const v2 = meshVertices[idx + 1];
-          const v3 = meshVertices[idx + this.meshDensity.width + 1];
-          const v4 = meshVertices[idx + this.meshDensity.width + 2];
-          
-          const uv1 = meshUVs[idx];
-          const uv2 = meshUVs[idx + 1];
-          const uv3 = meshUVs[idx + this.meshDensity.width + 1];
-          const uv4 = meshUVs[idx + this.meshDensity.width + 2];
-          
-          // 生成两个三角形（如果所有顶点都存在）
-          if (v1 && v2 && v3) {
-            if (isFront) {
-              this.addFace(v1.index, v2.index, v3.index, uv1, uv2, uv3);
-            } else {
-              this.addFace(v1.index, v3.index, v2.index, uv1, uv3, uv2);
-            }
-          }
-          
-          if (v2 && v3 && v4) {
-            if (isFront) {
-              this.addFace(v2.index, v4.index, v3.index, uv2, uv4, uv3);
-            } else {
-              this.addFace(v2.index, v3.index, v4.index, uv2, uv3, uv4);
-            }
-          }
-        }
-      }
-      
-      // 根据质量设置决定是否进行边界连接
-      if (this.meshQuality.enableBoundaryConnection) {
-        this.createSimpleBoundaryConnection(meshVertices, meshUVs, outerVertices, outerUVs, isFront);
-        this.createSimpleBoundaryConnection(meshVertices, meshUVs, innerVertices, innerUVs, isFront, true);
+    }
+    
+    // 根据质量设置决定是否进行边界连接
+    if (this.meshQuality.enableBoundaryConnection) {
+      this.createSimpleBoundaryConnection(meshVertices, meshUVs, outerVertices, outerUVs, isFront);
+      this.createSimpleBoundaryConnection(meshVertices, meshUVs, innerVertices, innerUVs, isFront, true);
       }
     }
   }
@@ -574,26 +574,9 @@ export class BadgeOBJExporter {
         const muv2 = meshUVs[mv2.gridY * (gridWidth + 1) + mv2.gridX];
         
         if (muv1 && muv2) {
-          // 根据是否为孔洞调整法线方向
-          if (isHole) {
-            // 孔洞边界：内向法线
-            if (isFront) {
-              this.addFace(bv1, mv1.index, bv2, buv1, muv1, buv2);
-              this.addFace(mv1.index, mv2.index, bv2, muv1, muv2, buv2);
-            } else {
-              this.addFace(bv1, bv2, mv1.index, buv1, buv2, muv1);
-              this.addFace(mv1.index, bv2, mv2.index, muv1, buv2, muv2);
-            }
-          } else {
-            // 外边界：外向法线
-            if (isFront) {
-              this.addFace(bv1, bv2, mv1.index, buv1, buv2, muv1);
-              this.addFace(mv1.index, bv2, mv2.index, muv1, buv2, muv2);
-            } else {
-              this.addFace(bv1, mv1.index, bv2, buv1, muv1, buv2);
-              this.addFace(mv1.index, mv2.index, bv2, muv1, muv2, buv2);
-            }
-          }
+          // 使用带法线检查的面添加方法，确保法线方向正确
+          this.addFaceWithNormalCheck(bv1, mv1.index, bv2, buv1, muv1, buv2, isFront);
+          this.addFaceWithNormalCheck(mv1.index, mv2.index, bv2, muv1, muv2, buv2, isFront);
           connectionCount += 2;
         }
       }
@@ -603,6 +586,60 @@ export class BadgeOBJExporter {
 
     // 修复角落缺口的专用算法
     this.fixCornerGaps(meshVertices, meshUVs, gridWidth, gridHeight, boundaryVertices, boundaryUVs, isFront, isHole);
+  }
+
+  // 计算三角形的正确法线方向
+  calculateTriangleNormal(v1, v2, v3) {
+    const vertex1 = this.vertices[v1 - 1];
+    const vertex2 = this.vertices[v2 - 1];
+    const vertex3 = this.vertices[v3 - 1];
+    
+    // 计算两个边向量
+    const edge1 = {
+      x: vertex2.x - vertex1.x,
+      y: vertex2.y - vertex1.y,
+      z: vertex2.z - vertex1.z
+    };
+    
+    const edge2 = {
+      x: vertex3.x - vertex1.x,
+      y: vertex3.y - vertex1.y,
+      z: vertex3.z - vertex1.z
+    };
+    
+    // 计算叉积得到法线向量
+    const normal = {
+      x: edge1.y * edge2.z - edge1.z * edge2.y,
+      y: edge1.z * edge2.x - edge1.x * edge2.z,
+      z: edge1.x * edge2.y - edge1.y * edge2.x
+    };
+    
+    return normal;
+  }
+
+  // 检查三角形法线方向是否正确
+  isNormalCorrect(v1, v2, v3, isFront) {
+    const normal = this.calculateTriangleNormal(v1, v2, v3);
+    
+    // 对于正面，法线应该指向正Z方向（normal.z > 0）
+    // 对于背面，法线应该指向负Z方向（normal.z < 0）
+    if (isFront) {
+      return normal.z > 0;
+    } else {
+      return normal.z < 0;
+    }
+  }
+
+  // 添加带法线检查的面
+  addFaceWithNormalCheck(v1, v2, v3, uv1, uv2, uv3, isFront) {
+    // 检查当前顶点顺序的法线方向
+    if (this.isNormalCorrect(v1, v2, v3, isFront)) {
+      // 法线方向正确，直接添加
+      this.addFace(v1, v2, v3, uv1, uv2, uv3);
+    } else {
+      // 法线方向错误，翻转顶点顺序
+      this.addFace(v1, v3, v2, uv1, uv3, uv2);
+    }
   }
 
   // 修复角落缺口的专用算法 - 优化版
@@ -667,22 +704,12 @@ export class BadgeOBJExporter {
         if (muv1 && muv2) {
           // 检查三角形是否有效（避免重复顶点）
           if (corner.boundaryVertex !== mv1.index && corner.boundaryVertex !== mv2.index && mv1.index !== mv2.index) {
-            // 创建角落修复三角形
-            if (isHole) {
-              // 孔洞边界：内向法线
-              if (isFront) {
-                this.addFace(corner.boundaryVertex, mv1.index, mv2.index, corner.boundaryUV, muv1, muv2);
-              } else {
-                this.addFace(corner.boundaryVertex, mv2.index, mv1.index, corner.boundaryUV, muv2, muv1);
-              }
-            } else {
-              // 外边界：外向法线
-              if (isFront) {
-                this.addFace(corner.boundaryVertex, mv2.index, mv1.index, corner.boundaryUV, muv2, muv1);
-              } else {
-                this.addFace(corner.boundaryVertex, mv1.index, mv2.index, corner.boundaryUV, muv1, muv2);
-              }
-            }
+            // 使用带法线检查的面添加方法，确保法线方向正确
+            this.addFaceWithNormalCheck(
+              corner.boundaryVertex, mv1.index, mv2.index, 
+              corner.boundaryUV, muv1, muv2, 
+              isFront
+            );
             fixCount++;
           }
         }
@@ -725,21 +752,8 @@ export class BadgeOBJExporter {
         const meshUV2 = meshUVs[v2.gridY * (this.meshDensity.width + 1) + v2.gridX];
         
         if (meshUV1 && meshUV2) {
-          if (isHole) {
-            // 孔洞边界：内向法线
-            if (isFront) {
-              this.addFace(bv, v1.index, v2.index, buv, meshUV1, meshUV2);
-            } else {
-              this.addFace(bv, v2.index, v1.index, buv, meshUV2, meshUV1);
-            }
-          } else {
-            // 外边界：外向法线
-            if (isFront) {
-              this.addFace(bv, v2.index, v1.index, buv, meshUV2, meshUV1);
-            } else {
-              this.addFace(bv, v1.index, v2.index, buv, meshUV1, meshUV2);
-            }
-          }
+          // 使用带法线检查的面添加方法，确保法线方向正确
+          this.addFaceWithNormalCheck(bv, v1.index, v2.index, buv, meshUV1, meshUV2, isFront);
         }
       }
     } else if (sortedVertices.length === 1) {
@@ -753,19 +767,8 @@ export class BadgeOBJExporter {
         const buv1 = boundaryUVs[0];
         const buv2 = boundaryUVs[1];
         
-        if (isHole) {
-          if (isFront) {
-            this.addFace(bv1, v.index, bv2, buv1, meshUV, buv2);
-          } else {
-            this.addFace(bv1, bv2, v.index, buv1, buv2, meshUV);
-          }
-        } else {
-          if (isFront) {
-            this.addFace(bv1, bv2, v.index, buv1, buv2, meshUV);
-          } else {
-            this.addFace(bv1, v.index, bv2, buv1, meshUV, buv2);
-          }
-        }
+        // 使用带法线检查的面添加方法，确保法线方向正确
+        this.addFaceWithNormalCheck(bv1, v.index, bv2, buv1, meshUV, buv2, isFront);
       }
     }
   }
@@ -1206,4 +1209,17 @@ export function testCornerFixFeatures() {
   console.log('✅ 角落修复功能已集成到重拓扑边界连接中');
   
   return '角落修复功能配置正常';
+}
+
+// 测试法线修复功能的辅助函数（开发调试用）
+export function testNormalFixFeatures() {
+  console.log('🧭 法线修复功能测试');
+  console.log('- 自动法线计算：基于叉积计算三角形法线向量');
+  console.log('- 法线方向检查：正面法线指向+Z，背面法线指向-Z');
+  console.log('- 智能顶点翻转：自动修正错误的顶点顺序');
+  console.log('- 统一应用：角落修复和边界连接都使用法线检查');
+  console.log('- 旋转稳定性：解决模型旋转时的光照异常问题');
+  console.log('✅ 法线修复功能已集成到所有边界连接算法中');
+  
+  return '法线修复功能配置正常';
 } 

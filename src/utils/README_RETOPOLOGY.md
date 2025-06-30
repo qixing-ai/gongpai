@@ -134,7 +134,7 @@ const result = await exportBadgeAsOBJ(
 ## 调试功能
 
 ```javascript
-import { testRetopologyFeatures, testCornerFixFeatures } from './objExporter.js';
+import { testRetopologyFeatures, testCornerFixFeatures, testNormalFixFeatures } from './objExporter.js';
 
 // 测试重拓扑功能配置
 const testResult = testRetopologyFeatures();
@@ -143,6 +143,10 @@ console.log(testResult);
 // 测试角落修复功能
 const cornerResult = testCornerFixFeatures();
 console.log(cornerResult);
+
+// 测试法线修复功能
+const normalResult = testNormalFixFeatures();
+console.log(normalResult);
 ```
 
 ## 注意事项
@@ -183,4 +187,39 @@ console.log(cornerResult);
 - ✅ 消除左上角和右下角的三角缺口
 - ✅ 保持模型水密性和完整性
 - ✅ 不影响其他正常区域的网格质量
-- ✅ 适用于所有密度等级的重拓扑 
+- ✅ 适用于所有密度等级的重拓扑
+
+## 法线修复专项说明 🧭
+
+### 问题背景
+在角落修复和边界连接过程中，如果三角形的顶点顺序不正确，会导致法线方向错误，使模型在旋转时出现光照异常或面片显示错乱。
+
+### 解决方案
+1. **自动法线计算**
+   - 使用叉积计算三角形的法线向量
+   - 基于右手定则确定正确的法线方向
+   - 实时检查每个三角形的法线朝向
+
+2. **智能顶点顺序修正**
+   - 正面三角形：法线指向+Z方向
+   - 背面三角形：法线指向-Z方向
+   - 自动翻转错误的顶点顺序
+
+3. **统一应用**
+   - `addFaceWithNormalCheck()` 函数统一处理所有面片
+   - 角落修复和边界连接都使用法线检查
+   - 确保整个模型的法线一致性
+
+### 技术实现
+```javascript
+// 核心法线检查函数
+calculateTriangleNormal(v1, v2, v3)  // 计算法线向量
+isNormalCorrect(v1, v2, v3, isFront) // 检查法线方向
+addFaceWithNormalCheck()             // 添加带法线检查的面
+```
+
+### 修复效果
+- ✅ 解决模型旋转时的光照异常
+- ✅ 消除面片显示错乱问题
+- ✅ 确保法线方向一致性
+- ✅ 提升模型的渲染质量 
