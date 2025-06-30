@@ -233,7 +233,11 @@ const BadgeDesigner = () => {
             />
           </Col>
           <Col span={6}>
-            <div style={{ height: '70%', marginBottom: '8px' }}>
+            <div style={{
+              height: '90vh',
+              overflow: 'auto',
+              marginBottom: '8px'
+            }}>
               <TextSettings
                 textSettings={textSettings}
                 setTextSettings={setTextSettings}
