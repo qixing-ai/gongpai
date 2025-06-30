@@ -5,8 +5,8 @@ export class BadgeOBJExporter {
     this.uvs = [];
     this.faces = [];
     this.vertexIndex = 1;
-    // 网格划分密度设置 - 增加默认密度以支持更密集的重拓扑
-    this.meshDensity = { width: 40, height: 40 }; // 提升到40x40网格以获得更密集的三角面
+    // 网格划分密度设置 - 只用一个参数 density
+    this.meshDensity = { density: 20 }; // 默认值
     // 网格质量设置
     this.meshQuality = { 
       enableBoundaryConnection: true,  // 是否启用边界连接
@@ -17,8 +17,8 @@ export class BadgeOBJExporter {
   }
 
   // 设置网格密度
-  setMeshDensity(widthSegments, heightSegments) {
-    this.meshDensity = { width: widthSegments, height: heightSegments };
+  setMeshDensity(density) {
+    this.meshDensity = { density };
   }
 
   // 设置网格质量
@@ -108,7 +108,7 @@ export class BadgeOBJExporter {
     } else if (type === 'circle') {
       const { radius, centerX, centerY } = params;
       // 分段数与网格密度相关联，保证孔洞更圆滑
-      let segments = Math.max(64, this.meshDensity.width * 2, Math.round(radius * 8));
+      let segments = Math.max(64, this.meshDensity.density * 2, Math.round(radius * 8));
       segments = Math.ceil(segments / 4) * 4; // 向上取整到4的倍数
       for (let i = 0; i < segments; i++) {
         const angle = (2 * Math.PI * i) / segments;
@@ -123,7 +123,7 @@ export class BadgeOBJExporter {
       const radiusY = height / 2;
       // 分段数与网格密度相关联，保证孔洞更圆滑
       const avgRadius = (radiusX + radiusY) / 2;
-      let segments = Math.max(64, this.meshDensity.width * 2, Math.round(avgRadius * 8));
+      let segments = Math.max(64, this.meshDensity.density * 2, Math.round(avgRadius * 8));
       segments = Math.ceil(segments / 4) * 4; // 向上取整到4的倍数
       for (let i = 0; i < segments; i++) {
         const angle = (2 * Math.PI * i) / segments;
@@ -215,7 +215,9 @@ export class BadgeOBJExporter {
       'high': { width: 60, height: 60 },
       'ultra': { width: 80, height: 80 }
     };
-    return densityMap[this.meshQuality.retopologyDensity] || densityMap['high'];
+    const d = densityMap[this.meshQuality.retopologyDensity] || densityMap['high'];
+    // 只用一个参数，取 width 作为正方形网格密度
+    return { density: d.width };
   }
 
   // 创建重拓扑网格顶点 - 专门用于高密度网格生成
@@ -225,12 +227,11 @@ export class BadgeOBJExporter {
     
     // 根据重拓扑设置动态调整网格密度
     const retopologyDensity = this.meshQuality.enableRetopology ? 
-      this.getRetopologyDensityValue() : this.meshDensity;
-    
+      this.getRetopologyDensityValue().density : this.meshDensity.density;
     const meshVertices = [];
     const meshUVs = [];
-    const gridWidth = retopologyDensity.width;
-    const gridHeight = retopologyDensity.height;
+    const gridWidth = retopologyDensity;
+    const gridHeight = retopologyDensity;
     
     // 生成密集的重拓扑网格
     for (let j = 0; j <= gridHeight; j++) {
@@ -362,16 +363,16 @@ export class BadgeOBJExporter {
       // 使用原始算法（保持向后兼容）
     const { width, height } = badgeSettings;
     const z = isFront ? thickness / 2 : -thickness / 2;
-    
+    const density = this.meshDensity.density;
     // 创建网格顶点
     const meshVertices = [];
     const meshUVs = [];
     
     // 生成网格内部顶点
-    for (let j = 0; j <= this.meshDensity.height; j++) {
-      for (let i = 0; i <= this.meshDensity.width; i++) {
-        const u = i / this.meshDensity.width;
-        const v = j / this.meshDensity.height;
+    for (let j = 0; j <= density; j++) {
+      for (let i = 0; i <= density; i++) {
+        const u = i / density;
+        const v = j / density;
         
         // 计算网格点在工牌范围内的坐标
         const x = (u - 0.5) * width;
@@ -394,18 +395,18 @@ export class BadgeOBJExporter {
     }
     
     // 生成网格三角形
-    for (let j = 0; j < this.meshDensity.height; j++) {
-      for (let i = 0; i < this.meshDensity.width; i++) {
-        const idx = j * (this.meshDensity.width + 1) + i;
+    for (let j = 0; j < density; j++) {
+      for (let i = 0; i < density; i++) {
+        const idx = j * (density + 1) + i;
         const v1 = meshVertices[idx];
         const v2 = meshVertices[idx + 1];
-        const v3 = meshVertices[idx + this.meshDensity.width + 1];
-        const v4 = meshVertices[idx + this.meshDensity.width + 2];
+        const v3 = meshVertices[idx + density + 1];
+        const v4 = meshVertices[idx + density + 2];
         
         const uv1 = meshUVs[idx];
         const uv2 = meshUVs[idx + 1];
-        const uv3 = meshUVs[idx + this.meshDensity.width + 1];
-        const uv4 = meshUVs[idx + this.meshDensity.width + 2];
+        const uv3 = meshUVs[idx + density + 1];
+        const uv4 = meshUVs[idx + density + 2];
         
         // 生成两个三角形（如果所有顶点都存在）
         if (v1 && v2 && v3) {
@@ -429,7 +430,7 @@ export class BadgeOBJExporter {
     // 根据质量设置决定是否进行边界连接
     if (this.meshQuality.enableBoundaryConnection) {
       this.createSimpleBoundaryConnection(meshVertices, meshUVs, boundaryVertices, boundaryUVs, isFront);
-      }
+    }
     }
   }
 
@@ -457,16 +458,16 @@ export class BadgeOBJExporter {
       // 使用原始算法（保持向后兼容）
     const { width, height } = badgeSettings;
     const z = isFront ? thickness / 2 : -thickness / 2;
-    
+    const density = this.meshDensity.density;
     // 创建网格顶点
     const meshVertices = [];
     const meshUVs = [];
     
     // 生成网格内部顶点
-    for (let j = 0; j <= this.meshDensity.height; j++) {
-      for (let i = 0; i <= this.meshDensity.width; i++) {
-        const u = i / this.meshDensity.width;
-        const v = j / this.meshDensity.height;
+    for (let j = 0; j <= density; j++) {
+      for (let i = 0; i <= density; i++) {
+        const u = i / density;
+        const v = j / density;
         
         // 计算网格点在工牌范围内的坐标
         const x = (u - 0.5) * width;
@@ -489,18 +490,18 @@ export class BadgeOBJExporter {
     }
     
     // 生成网格三角形（与无孔洞版本相同）
-    for (let j = 0; j < this.meshDensity.height; j++) {
-      for (let i = 0; i < this.meshDensity.width; i++) {
-        const idx = j * (this.meshDensity.width + 1) + i;
+    for (let j = 0; j < density; j++) {
+      for (let i = 0; i < density; i++) {
+        const idx = j * (density + 1) + i;
         const v1 = meshVertices[idx];
         const v2 = meshVertices[idx + 1];
-        const v3 = meshVertices[idx + this.meshDensity.width + 1];
-        const v4 = meshVertices[idx + this.meshDensity.width + 2];
+        const v3 = meshVertices[idx + density + 1];
+        const v4 = meshVertices[idx + density + 2];
         
         const uv1 = meshUVs[idx];
         const uv2 = meshUVs[idx + 1];
-        const uv3 = meshUVs[idx + this.meshDensity.width + 1];
-        const uv4 = meshUVs[idx + this.meshDensity.width + 2];
+        const uv3 = meshUVs[idx + density + 1];
+        const uv4 = meshUVs[idx + density + 2];
         
         // 生成两个三角形（如果所有顶点都存在）
         if (v1 && v2 && v3) {
@@ -801,8 +802,8 @@ export class BadgeOBJExporter {
       for (let i = 0; i < Math.min(3, boundaryVertices.length); i++) {
         const bv = boundaryVertices[i];
         const buv = boundaryUVs[i];
-        const meshUV1 = meshUVs[v1.gridY * (this.meshDensity.width + 1) + v1.gridX];
-        const meshUV2 = meshUVs[v2.gridY * (this.meshDensity.width + 1) + v2.gridX];
+        const meshUV1 = meshUVs[v1.gridY * (this.meshDensity.density + 1) + v1.gridX];
+        const meshUV2 = meshUVs[v2.gridY * (this.meshDensity.density + 1) + v2.gridX];
         
         if (meshUV1 && meshUV2) {
           // 使用带法线检查的面添加方法，确保法线方向正确
@@ -812,7 +813,7 @@ export class BadgeOBJExporter {
     } else if (sortedVertices.length === 1) {
       // 只有一个网格顶点时，创建更少的连接
       const v = sortedVertices[0];
-      const meshUV = meshUVs[v.gridY * (this.meshDensity.width + 1) + v.gridX];
+      const meshUV = meshUVs[v.gridY * (this.meshDensity.density + 1) + v.gridX];
       
       if (meshUV && boundaryVertices.length >= 2) {
         const bv1 = boundaryVertices[0];
@@ -949,8 +950,8 @@ export class BadgeOBJExporter {
     const faceCount = this.faces.length;
     const vertexCount = this.vertices.length;
     const retopologyInfo = this.meshQuality.enableRetopology ? 
-      `重拓扑密度: ${this.meshQuality.retopologyDensity} (${this.getRetopologyDensityValue().width}x${this.getRetopologyDensityValue().height})` :
-      `传统网格: ${this.meshDensity.width}x${this.meshDensity.height}`;
+      `重拓扑密度: ${this.meshQuality.retopologyDensity} (${this.getRetopologyDensityValue().density}x${this.getRetopologyDensityValue().density})` :
+      `传统网格: ${this.meshDensity.density}x${this.meshDensity.density}`;
     
     let obj = `# 水密工牌 OBJ 模型 - 重拓扑优化版本\n# 尺寸: ${badgeSettings.width}mm x ${badgeSettings.height}mm x ${exportSettings.thickness}mm\n# ${retopologyInfo}\n# 顶点数: ${vertexCount}, 面数: ${faceCount}\n# 生成时间: ${new Date().toLocaleString('zh-CN')}\n# 特性: 水密结构，密集重拓扑网格，正方形划分，便于顶点颜色映射\n# 优化: 四边形对角线分割，高质量三角面，适合后续操作\n\n`;
     
@@ -1160,7 +1161,7 @@ export class BadgeOBJExporter {
 export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings = { 
   doubleSided: true, 
   thickness: 2.0, 
-  meshDensity: { width: 40, height: 40 },
+  meshDensity: { density: 20 },
   meshQuality: { 
     enableBoundaryConnection: true, 
     maxBoundaryConnections: 3,
@@ -1173,7 +1174,7 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
   try {
     // 设置网格密度
     if (exportSettings.meshDensity) {
-      exporter.setMeshDensity(exportSettings.meshDensity.width || 20, exportSettings.meshDensity.height || 20);
+      exporter.setMeshDensity(exportSettings.meshDensity.density || 20);
     }
     
     // 设置网格质量
@@ -1215,8 +1216,8 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
     
     const modelType = exportSettings.doubleSided ? '双面' : '单面';
     const retopologyInfo = exporter.meshQuality.enableRetopology ? 
-      `重拓扑${exporter.meshQuality.retopologyDensity}密度: ${exporter.getRetopologyDensityValue().width}x${exporter.getRetopologyDensityValue().height}` :
-      `传统网格: ${exporter.meshDensity.width}x${exporter.meshDensity.height}`;
+      `重拓扑${exporter.meshQuality.retopologyDensity}密度: ${exporter.getRetopologyDensityValue().density}` :
+      `传统网格: ${exporter.meshDensity.density}x${exporter.meshDensity.density}`;
     const qualityInfo = exporter.meshQuality.enableBoundaryConnection ? 
       `边界连接: ${exporter.meshQuality.maxBoundaryConnections}个` : '边界连接: 已禁用';
     
@@ -1238,7 +1239,7 @@ export function testRetopologyFeatures() {
   densities.forEach(density => {
     exporter.setMeshQuality(true, 3, true, density);
     const densityValue = exporter.getRetopologyDensityValue();
-    console.log(`${density}密度: ${densityValue.width}x${densityValue.height}`);
+    console.log(`${density}密度: ${densityValue.density}`);
   });
   
   // 输出重拓扑配置信息

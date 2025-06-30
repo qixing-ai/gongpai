@@ -136,36 +136,21 @@ const TextSettings = ({
           </div>
           
           <div>
-            <Text>网格密度</Text>
-            <div style={{ marginTop: 4 }}>
-              <Text style={{ fontSize: '12px' }}>宽度: {exportSettings.meshDensity?.width || 20}</Text>
-              <Slider
-                min={10}
-                max={1000}
-                step={5}
-                value={exportSettings.meshDensity?.width || 20}
-                onChange={(value) => setExportSettings(prev => ({ 
-                  ...prev, 
-                  meshDensity: { ...prev.meshDensity, width: value }
-                }))}
-                size="small"
-              />
-              <Text style={{ fontSize: '12px' }}>高度: {exportSettings.meshDensity?.height || 20}</Text>
-              <Slider
-                min={10}
-                max={1000}
-                step={5}
-                value={exportSettings.meshDensity?.height || 20}
-                onChange={(value) => setExportSettings(prev => ({ 
-                  ...prev, 
-                  meshDensity: { ...prev.meshDensity, height: value }
-                }))}
-                size="small"
-              />
-              <Text style={{ fontSize: '11px', color: '#666' }}>
-                密度越高，三角面越密集。超高密度(&gt;200)会显著增加文件大小和处理时间
-              </Text>
-            </div>
+            <Text>网格密度: {exportSettings.meshDensity?.density || 20}</Text>
+            <Slider
+              min={10}
+              max={1000}
+              step={5}
+              value={exportSettings.meshDensity?.density || 20}
+              onChange={(value) => setExportSettings(prev => ({
+                ...prev,
+                meshDensity: { density: value }
+              }))}
+              size="small"
+            />
+            <Text style={{ fontSize: '11px', color: '#666' }}>
+              密度越高，三角面越密集。超高密度(&gt;200)会显著增加文件大小和处理时间
+            </Text>
           </div>
           
           <div>

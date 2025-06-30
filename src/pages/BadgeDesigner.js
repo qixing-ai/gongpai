@@ -13,7 +13,7 @@ import {
   ReloadOutlined,
   CameraOutlined,
 } from '@ant-design/icons';
-import { BadgePreview, BadgeSettings, TextSettings, OBJColorConverter } from '../components';
+import { BadgePreview, BadgeSettings, TextSettings } from '../components';
 import useInteraction from '../hooks/useInteraction';
 import { UNIT_CONFIG } from '../constants/unitConfig';
 
@@ -72,8 +72,7 @@ const BadgeDesigner = () => {
     doubleSided: true,    // 双面/单面
     thickness: 2.0,       // 厚度 mm
     meshDensity: {        // 网格密度设置
-      width: 20,          // 宽度方向分段数
-      height: 20          // 高度方向分段数
+      density: 20         // 正方形网格分段数
     },
     meshQuality: {        // 网格质量设置
       enableBoundaryConnection: true,  // 是否启用边界连接
@@ -167,8 +166,7 @@ const BadgeDesigner = () => {
       doubleSided: true,
       thickness: formatSize(2.0, 1),
       meshDensity: {
-        width: 20,
-        height: 20
+        density: 20
       },
       meshQuality: {
         enableBoundaryConnection: true,
@@ -245,11 +243,6 @@ const BadgeDesigner = () => {
                 UNIT_CONFIG={UNIT_CONFIG}
                 formatSize={formatSize}
               />
-            </div>
-            
-            {/* OBJ颜色转换工具 */}
-            <div style={{ height: '30%' }}>
-              <OBJColorConverter />
             </div>
           </Col>
         </Row>
