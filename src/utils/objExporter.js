@@ -444,9 +444,9 @@ export class BadgeOBJExporter {
         nearbyVertices = searchCandidates
           .map(mv => ({
             ...mv,
-            distance: Math.sqrt((mv.x - boundaryVertex.x) ** 2 + (mv.y - boundaryVertex.y) ** 2)
+            distanceSq: (mv.x - boundaryVertex.x) ** 2 + (mv.y - boundaryVertex.y) ** 2
           }))
-          .sort((a, b) => a.distance - b.distance)
+          .sort((a, b) => a.distanceSq - b.distanceSq)
           .slice(0, numToSlice);
       } else {
         // 降级到旧的慢速算法（以防万一）
@@ -455,17 +455,17 @@ export class BadgeOBJExporter {
             .filter(mv => !mv.isHoleBoundary)
             .map(mv => ({
               ...mv,
-              distance: Math.sqrt((mv.x - boundaryVertex.x) ** 2 + (mv.y - boundaryVertex.y) ** 2)
+              distanceSq: (mv.x - boundaryVertex.x) ** 2 + (mv.y - boundaryVertex.y) ** 2
             }))
-            .sort((a, b) => a.distance - b.distance)
+            .sort((a, b) => a.distanceSq - b.distanceSq)
             .slice(0, numToSlice); 
         } else {
           nearbyVertices = regularMeshVertices
             .map(mv => ({
               ...mv,
-              distance: Math.sqrt((mv.x - boundaryVertex.x) ** 2 + (mv.y - boundaryVertex.y) ** 2)
+              distanceSq: (mv.x - boundaryVertex.x) ** 2 + (mv.y - boundaryVertex.y) ** 2
             }))
-            .sort((a, b) => a.distance - b.distance)
+            .sort((a, b) => a.distanceSq - b.distanceSq)
             .slice(0, numToSlice);
         }
       }
@@ -770,10 +770,12 @@ export class BadgeOBJExporter {
       if (isHole) {
         // 孔洞：每个边界点只找最近的一个网格点
         // 优化：移除多余的 isPointInPolygon 检查，因为空间网格中的点已确保在孔洞外
+        // 优化：使用距离平方避免开方
+        let minSqDist = Infinity;
         searchCandidates.forEach(mv => {
-          const dist = Math.sqrt((mv.x - bp.x) ** 2 + (mv.y - bp.y) ** 2);
-          if (dist < minDist) {
-            minDist = dist;
+          const distSq = (mv.x - bp.x) ** 2 + (mv.y - bp.y) ** 2;
+          if (distSq < minSqDist) {
+            minSqDist = distSq;
             nearestVertex = mv;
           }
         });
@@ -784,12 +786,13 @@ export class BadgeOBJExporter {
         }
       } else {
         // 外边界：保持原有逻辑
+        // 优化：使用距离平方避免开方
         const nearbyVertices = searchCandidates
           .map(mv => ({
             ...mv,
-            distance: Math.sqrt((mv.x - bp.x) ** 2 + (mv.y - bp.y) ** 2)
+            distanceSq: (mv.x - bp.x) ** 2 + (mv.y - bp.y) ** 2
           }))
-          .sort((a, b) => a.distance - b.distance)
+          .sort((a, b) => a.distanceSq - b.distanceSq)
           .slice(0, Math.min(2, searchCandidates.length));
         connectionMap.set(bpIndex, nearbyVertices);
       }
@@ -944,21 +947,23 @@ export class BadgeOBJExporter {
       if (isHole) {
         // 孔洞：寻找孔洞边界外围的网格顶点
         // 优化：移除多余的 isPointInPolygon 检查
+        // 优化：使用距离平方避免开方
         nearbyVertices = searchCandidates
           .map(mv => ({
             ...mv,
-            distance: Math.sqrt((mv.x - corner.point.x) ** 2 + (mv.y - corner.point.y) ** 2)
+            distanceSq: (mv.x - corner.point.x) ** 2 + (mv.y - corner.point.y) ** 2
           }))
-          .sort((a, b) => a.distance - b.distance)
+          .sort((a, b) => a.distanceSq - b.distanceSq)
           .slice(0, 8); // 孔洞使用更多顶点进行修复
       } else {
         // 外边界：正常处理，searchCandidates已确保不含孔洞边界点
+        // 优化：使用距离平方避免开方
         nearbyVertices = searchCandidates
           .map(mv => ({
             ...mv,
-            distance: Math.sqrt((mv.x - corner.point.x) ** 2 + (mv.y - corner.point.y) ** 2)
+            distanceSq: (mv.x - corner.point.x) ** 2 + (mv.y - corner.point.y) ** 2
           }))
-          .sort((a, b) => a.distance - b.distance)
+          .sort((a, b) => a.distanceSq - b.distanceSq)
           .slice(0, 4);
       }
       // 冗余修复：尝试所有可能的顶点组合
@@ -1007,12 +1012,13 @@ export class BadgeOBJExporter {
     const centerY = boundaryPoints.reduce((sum, p) => sum + p.y, 0) / boundaryPoints.length;
     
     // 找到距离边界中心最近的网格顶点
+    // 优化：使用距离平方避免开方
     const sortedVertices = validMeshVertices
       .map(mv => ({
         ...mv,
-        distance: Math.sqrt((mv.x - centerX) ** 2 + (mv.y - centerY) ** 2)
+        distanceSq: (mv.x - centerX) ** 2 + (mv.y - centerY) ** 2
       }))
-      .sort((a, b) => a.distance - b.distance)
+      .sort((a, b) => a.distanceSq - b.distanceSq)
       .slice(0, Math.min(this.meshQuality.maxBoundaryConnections, validMeshVertices.length));
     
     // 如果网格顶点足够多，只创建必要的连接三角形
