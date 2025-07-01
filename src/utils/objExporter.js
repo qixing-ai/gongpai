@@ -417,51 +417,57 @@ export class BadgeOBJExporter {
   }
 
   // 生成孔洞边界三角形 - 复用圆角修复算法
-  generateHoleBoundaryTriangles(meshVertices, meshUVs, isFront) {
-    const validMeshVertices = meshVertices.filter(v => v !== null);
-    const holeBoundaryVertices = validMeshVertices.filter(v => v.isHoleBoundary);
-    const regularMeshVertices = validMeshVertices.filter(v => !v.isHoleBoundary);
-    
+  generateHoleBoundaryTriangles(meshVertices, meshUVs, holeBoundaryVertices, regularMeshVertices, isFront, spatialGrid) {
     if (holeBoundaryVertices.length === 0 || regularMeshVertices.length === 0) {
       return 0;
     }
     
-    console.log(`使用圆弧边界连接算法处理${holeBoundaryVertices.length}个孔洞边界点...`);
+    console.log(`使用优化的圆弧边界连接算法处理${holeBoundaryVertices.length}个孔洞边界点...`);
     
     // 直接使用改进的圆弧边界连接算法
-    return this.generateCircularBoundaryConnections(meshVertices, meshUVs, holeBoundaryVertices, regularMeshVertices, isFront, true);
+    return this.generateCircularBoundaryConnections(meshVertices, meshUVs, holeBoundaryVertices, regularMeshVertices, isFront, true, spatialGrid);
   }
 
   // 通用的圆弧边界连接算法 - 适用于孔洞和工牌圆角
-  generateCircularBoundaryConnections(meshVertices, meshUVs, boundaryVertices, regularMeshVertices, isFront, isHole = false) {
+  generateCircularBoundaryConnections(meshVertices, meshUVs, boundaryVertices, regularMeshVertices, isFront, isHole = false, spatialGrid) {
     let triangleCount = 0;
     
     // 为每个边界点找到最近的规则网格点并创建连接
     boundaryVertices.forEach((boundaryVertex, boundaryIndex) => {
       // 找到最近的几个规则网格点
       let nearbyVertices;
-      if (isHole) {
-        // 孔洞：确保网格点在孔洞外围
-        nearbyVertices = regularMeshVertices
-          .filter(mv => {
-            // 对于孔洞，确保网格点不在孔洞内部
-            return !mv.isHoleBoundary;
-          })
+      const numToSlice = isHole ? 4 : 3;
+
+      // 优化：如果提供了空间网格，则使用它来加速搜索
+      if (spatialGrid) {
+        const searchCandidates = this._queryNearbyVertices(spatialGrid, boundaryVertex.x, boundaryVertex.y, 2);
+        nearbyVertices = searchCandidates
           .map(mv => ({
             ...mv,
             distance: Math.sqrt((mv.x - boundaryVertex.x) ** 2 + (mv.y - boundaryVertex.y) ** 2)
           }))
           .sort((a, b) => a.distance - b.distance)
-          .slice(0, 4); // 孔洞使用更多连接点
+          .slice(0, numToSlice);
       } else {
-        // 外边界：正常处理
-        nearbyVertices = regularMeshVertices
-          .map(mv => ({
-            ...mv,
-            distance: Math.sqrt((mv.x - boundaryVertex.x) ** 2 + (mv.y - boundaryVertex.y) ** 2)
-          }))
-          .sort((a, b) => a.distance - b.distance)
-          .slice(0, 3);
+        // 降级到旧的慢速算法（以防万一）
+        if (isHole) {
+          nearbyVertices = regularMeshVertices
+            .filter(mv => !mv.isHoleBoundary)
+            .map(mv => ({
+              ...mv,
+              distance: Math.sqrt((mv.x - boundaryVertex.x) ** 2 + (mv.y - boundaryVertex.y) ** 2)
+            }))
+            .sort((a, b) => a.distance - b.distance)
+            .slice(0, numToSlice); 
+        } else {
+          nearbyVertices = regularMeshVertices
+            .map(mv => ({
+              ...mv,
+              distance: Math.sqrt((mv.x - boundaryVertex.x) ** 2 + (mv.y - boundaryVertex.y) ** 2)
+            }))
+            .sort((a, b) => a.distance - b.distance)
+            .slice(0, numToSlice);
+        }
       }
       
       // 获取当前边界点的UV
@@ -581,7 +587,18 @@ export class BadgeOBJExporter {
       );
       
       const triangleCount = this.generateRetopologyTriangles(meshVertices, meshUVs, gridWidth, gridHeight, isFront);
-      const holeFillTriangles = this.generateHoleBoundaryTriangles(meshVertices, meshUVs, isFront);
+      
+      // 优化：预先计算顶点列表并为孔洞连接创建空间网格
+      const validMeshVertices = meshVertices.filter(v => v !== null);
+      const holeBoundaryVertices = validMeshVertices.filter(v => v.isHoleBoundary);
+      const regularMeshVertices = validMeshVertices.filter(v => !v.isHoleBoundary);
+      let holeFillTriangles = 0;
+
+      if (hasHole && holeBoundaryVertices.length > 0 && regularMeshVertices.length > 0) {
+        const cellSize = Math.max(badgeSettings.width, badgeSettings.height) / Math.max(gridWidth, gridHeight, 1);
+        const regularMeshSpatialGrid = this._createSpatialGrid(regularMeshVertices, cellSize);
+        holeFillTriangles = this.generateHoleBoundaryTriangles(meshVertices, meshUVs, holeBoundaryVertices, regularMeshVertices, isFront, regularMeshSpatialGrid);
+      }
       
       if (this.meshQuality.enableBoundaryConnection) {
         this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, outerVertices, outerUVs, isFront, false, badgeSettings);
