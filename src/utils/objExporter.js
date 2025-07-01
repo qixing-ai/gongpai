@@ -527,6 +527,44 @@ export class BadgeOBJExporter {
     return triangleCount;
   }
 
+  // 为重拓扑网格创建空间索引，以加速最近点搜索
+  _createSpatialGrid(vertices, cellSize) {
+    const grid = new Map();
+    if (cellSize <= 0) {
+      console.warn("Invalid cellSize for spatial grid, using default.");
+      cellSize = 1.0;
+    }
+    const invCellSize = 1 / cellSize;
+
+    for (const vertex of vertices) {
+      if (!vertex) continue;
+      const key = `${Math.floor(vertex.x * invCellSize)}_${Math.floor(vertex.y * invCellSize)}`;
+      if (!grid.has(key)) {
+        grid.set(key, []);
+      }
+      grid.get(key).push(vertex);
+    }
+    return { grid, invCellSize };
+  }
+
+  // 从空间索引中查询附近的顶点
+  _queryNearbyVertices(spatialGrid, x, y, searchRadius = 1) {
+    const { grid, invCellSize } = spatialGrid;
+    const nearby = [];
+    const gridX = Math.floor(x * invCellSize);
+    const gridY = Math.floor(y * invCellSize);
+
+    for (let i = -searchRadius; i <= searchRadius; i++) {
+      for (let j = -searchRadius; j <= searchRadius; j++) {
+        const key = `${gridX + i}_${gridY + j}`;
+        if (grid.has(key)) {
+          nearby.push(...grid.get(key));
+        }
+      }
+    }
+    return nearby;
+  }
+
   // 通用的网格化面生成（重构后）
   createMeshedFace(outerVertices, outerUVs, isFront, badgeSettings, thickness, innerVertices = null, innerUVs = null) {
     const hasHole = !!innerVertices;
@@ -541,9 +579,9 @@ export class BadgeOBJExporter {
       const holeFillTriangles = this.generateHoleBoundaryTriangles(meshVertices, meshUVs, isFront);
       
       if (this.meshQuality.enableBoundaryConnection) {
-        this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, outerVertices, outerUVs, isFront, false);
+        this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, outerVertices, outerUVs, isFront, false, badgeSettings);
         if (hasHole) {
-          this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, innerVertices, innerUVs, isFront, true);
+          this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, innerVertices, innerUVs, isFront, true, badgeSettings);
         }
       }
       
@@ -628,12 +666,16 @@ export class BadgeOBJExporter {
   }
 
   // 重拓扑专用的边界连接算法 - 优化边界到网格的连接
-  createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, boundaryVertices, boundaryUVs, isFront, isHole = false) {
+  createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, boundaryVertices, boundaryUVs, isFront, isHole = false, badgeSettings = { width: 100, height: 100 }) {
     const validMeshVertices = meshVertices.filter(v => v !== null);
     if (validMeshVertices.length === 0) return;
     
     // 获取边界顶点的实际坐标
     const boundaryPoints = boundaryVertices.map(v => this.vertices[v - 1]);
+    
+    // 优化：使用空间网格加速最近点查找
+    const cellSize = Math.max(badgeSettings.width, badgeSettings.height) / Math.max(gridWidth, gridHeight, 1);
+    const spatialGrid = this._createSpatialGrid(validMeshVertices.filter(v => !v.isHoleBoundary), cellSize);
     
     if (isHole) {
       // 孔洞边界：直接使用已经集成到主面网格中的孔洞边界点
@@ -657,8 +699,8 @@ export class BadgeOBJExporter {
           
           if (mv1 && mv2) {
             // 找到最近的非孔洞边界的主面网格点
-            const nearbyMeshVertices = validMeshVertices
-              .filter(mv => !mv.isHoleBoundary)
+            const searchCandidates = this._queryNearbyVertices(spatialGrid, (mv1.x + mv2.x) / 2, (mv1.y + mv2.y) / 2, 2);
+            const nearbyMeshVertices = searchCandidates
               .map(mv => ({
                 ...mv,
                 distance1: Math.sqrt((mv.x - mv1.x) ** 2 + (mv.y - mv1.y) ** 2),
@@ -698,10 +740,14 @@ export class BadgeOBJExporter {
     boundaryPoints.forEach((bp, bpIndex) => {
       let nearestVertex = null;
       let minDist = Infinity;
+      
+      // 使用空间网格进行优化
+      const searchCandidates = this._queryNearbyVertices(spatialGrid, bp.x, bp.y, 2);
+
       if (isHole) {
         // 孔洞：每个边界点只找最近的一个网格点
-        validMeshVertices.forEach(mv => {
-          if (!mv.isHoleBoundary && !this.isPointInPolygon(mv.x, mv.y, boundaryVertices)) {
+        searchCandidates.forEach(mv => {
+          if (!this.isPointInPolygon(mv.x, mv.y, boundaryVertices)) { // 空间网格已过滤isHoleBoundary
             const dist = Math.sqrt((mv.x - bp.x) ** 2 + (mv.y - bp.y) ** 2);
             if (dist < minDist) {
               minDist = dist;
@@ -716,14 +762,13 @@ export class BadgeOBJExporter {
         }
       } else {
         // 外边界：保持原有逻辑
-        const nearbyVertices = validMeshVertices
-          .filter(mv => !mv.isHoleBoundary)
+        const nearbyVertices = searchCandidates
           .map(mv => ({
             ...mv,
             distance: Math.sqrt((mv.x - bp.x) ** 2 + (mv.y - bp.y) ** 2)
           }))
           .sort((a, b) => a.distance - b.distance)
-          .slice(0, Math.min(2, validMeshVertices.length));
+          .slice(0, Math.min(2, searchCandidates.length));
         connectionMap.set(bpIndex, nearbyVertices);
       }
     });
@@ -768,7 +813,7 @@ export class BadgeOBJExporter {
     console.log(`重拓扑${boundaryType}连接：生成了${connectionCount}个连接三角形`);
 
     // 修复角落缺口的专用算法 - 冗余修复版
-    this.fixCornerGaps(meshVertices, meshUVs, gridWidth, gridHeight, boundaryVertices, boundaryUVs, isFront, isHole);
+    this.fixCornerGaps(meshVertices, meshUVs, gridWidth, gridHeight, boundaryVertices, boundaryUVs, isFront, isHole, badgeSettings, spatialGrid);
   }
 
   // 计算三角形的正确法线方向
@@ -826,7 +871,7 @@ export class BadgeOBJExporter {
   }
 
   // 修复角落缺口的专用算法 - 冗余修复版
-  fixCornerGaps(meshVertices, meshUVs, gridWidth, gridHeight, boundaryVertices, boundaryUVs, isFront, isHole = false) {
+  fixCornerGaps(meshVertices, meshUVs, gridWidth, gridHeight, boundaryVertices, boundaryUVs, isFront, isHole = false, badgeSettings = { width: 100, height: 100 }, spatialGrid) {
     const validMeshVertices = meshVertices.filter(v => v !== null);
     if (validMeshVertices.length === 0) return;
     
@@ -870,9 +915,13 @@ export class BadgeOBJExporter {
     // 为每个角落区域寻找合适的网格顶点并创建冗余连接
     corners.forEach(corner => {
       let nearbyVertices;
+      // 优化：使用传入的空间网格进行搜索
+      const searchRadius = isHole ? 4 : 2; // 孔洞的搜索范围更大
+      const searchCandidates = this._queryNearbyVertices(spatialGrid, corner.point.x, corner.point.y, searchRadius);
+
       if (isHole) {
         // 孔洞：寻找孔洞边界外围的网格顶点
-        nearbyVertices = validMeshVertices
+        nearbyVertices = searchCandidates
           .filter(mv => {
             const mvPoint = { x: mv.x, y: mv.y };
             return !this.isPointInPolygon(mvPoint.x, mvPoint.y, boundaryVertices);
@@ -884,8 +933,8 @@ export class BadgeOBJExporter {
           .sort((a, b) => a.distance - b.distance)
           .slice(0, 8); // 孔洞使用更多顶点进行修复
       } else {
-        // 外边界：正常处理
-        nearbyVertices = validMeshVertices
+        // 外边界：正常处理，searchCandidates已确保不含孔洞边界点
+        nearbyVertices = searchCandidates
           .map(mv => ({
             ...mv,
             distance: Math.sqrt((mv.x - corner.point.x) ** 2 + (mv.y - corner.point.y) ** 2)
