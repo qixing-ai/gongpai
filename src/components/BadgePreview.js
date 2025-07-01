@@ -286,7 +286,7 @@ const BadgePreview = ({
       title="工牌预览" 
       size="small"
       style={{ height: '100%' }}
-      bodyStyle={{ padding: '8px' }}
+      styles={{ body: { padding: '8px' } }}
     >
       <div 
         style={{ 

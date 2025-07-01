@@ -33,7 +33,7 @@ const BadgeSettings = ({
       title="工牌设置" 
       size="small"
       style={{ height: '100%', overflowY: 'auto' }}
-      bodyStyle={{ padding: '8px' }}
+      styles={{ body: { padding: '8px' } }}
     >
       <Space direction="vertical" style={{ width: '100%' }} size={4}>
         {/* 工牌尺寸设置 */}

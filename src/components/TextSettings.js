@@ -19,7 +19,7 @@ const TextSettings = ({
         title="文字设置" 
         size="small"
         style={{ flex: 1 }}
-        bodyStyle={{ padding: '8px' }}
+        styles={{ body: { padding: '8px' } }}
       >
         <Space direction="vertical" style={{ width: '100%' }} size={4}>
           <div>
@@ -107,7 +107,7 @@ const TextSettings = ({
         title="导出设置" 
         size="small"
         style={{ flex: 'none' }}
-        bodyStyle={{ padding: '8px' }}
+        styles={{ body: { padding: '8px' } }}
       >
         <Space direction="vertical" style={{ width: '100%' }} size={4}>
           <div>

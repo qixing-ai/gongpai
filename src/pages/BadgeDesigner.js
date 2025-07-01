@@ -7,6 +7,7 @@ import {
   Row,
   Col,
   message,
+  Spin,
 } from 'antd';
 import {
   DownloadOutlined,
@@ -101,8 +102,13 @@ const BadgeDesigner = () => {
     UNIT_CONFIG
   );
 
+  const [loading, setLoading] = useState(false);
+
   // 导出工牌为OBJ模型
   const exportBadge = async (for3DPrinting = false) => {
+    console.log('Loading state before export:', loading);
+    setLoading(true);
+    console.log('Loading state after setting to true:', loading);
     try {
       const loadingMessage = for3DPrinting 
         ? '正在生成用于3D打印的OBJ模型...' 
@@ -131,6 +137,9 @@ const BadgeDesigner = () => {
       message.destroy();
       message.error('导出失败：' + error.message);
       console.error('导出错误:', error);
+    } finally {
+      setLoading(false);
+      console.log('Loading state after setting to false:', loading);
     }
   };
 
@@ -213,53 +222,55 @@ const BadgeDesigner = () => {
       </Header>
 
       <Content style={{ padding: 12, background: '#f5f5f5', overflow: 'hidden' }}>
-        <Row gutter={12} style={{ height: '100%' }}>
-          <Col span={6}>
-            <BadgeSettings
-              badgeSettings={badgeSettings}
-              setBadgeSettings={setBadgeSettings}
-              holeSettings={holeSettings}
-              setHoleSettings={setHoleSettings}
-              imageSettings={imageSettings}
-              setImageSettings={setImageSettings}
-              setSelectedElement={setSelectedElement}
-              UNIT_CONFIG={UNIT_CONFIG}
-              formatSize={formatSize}
-            />
-          </Col>
-          <Col span={12}>
-            <BadgePreview
-              badgeSettings={badgeSettings}
-              holeSettings={holeSettings}
-              imageSettings={imageSettings}
-              textSettings={textSettings}
-              selectedElement={selectedElement}
-              setSelectedElement={setSelectedElement}
-              interactionState={interactionState}
-              startInteraction={startInteraction}
-              handleDoubleClick={handleDoubleClick}
-              UNIT_CONFIG={UNIT_CONFIG}
-              formatSize={formatSize}
-            />
-          </Col>
-          <Col span={6}>
-            <div style={{
-              height: '90vh',
-              overflow: 'auto',
-              marginBottom: '8px'
-            }}>
-              <TextSettings
-                textSettings={textSettings}
-                setTextSettings={setTextSettings}
+        <Spin spinning={loading} tip="加载中...">
+          <Row gutter={12} style={{ height: '100%' }}>
+            <Col span={6}>
+              <BadgeSettings
                 badgeSettings={badgeSettings}
-                exportSettings={exportSettings}
-                setExportSettings={setExportSettings}
+                setBadgeSettings={setBadgeSettings}
+                holeSettings={holeSettings}
+                setHoleSettings={setHoleSettings}
+                imageSettings={imageSettings}
+                setImageSettings={setImageSettings}
+                setSelectedElement={setSelectedElement}
                 UNIT_CONFIG={UNIT_CONFIG}
                 formatSize={formatSize}
               />
-            </div>
-          </Col>
-        </Row>
+            </Col>
+            <Col span={12}>
+              <BadgePreview
+                badgeSettings={badgeSettings}
+                holeSettings={holeSettings}
+                imageSettings={imageSettings}
+                textSettings={textSettings}
+                selectedElement={selectedElement}
+                setSelectedElement={setSelectedElement}
+                interactionState={interactionState}
+                startInteraction={startInteraction}
+                handleDoubleClick={handleDoubleClick}
+                UNIT_CONFIG={UNIT_CONFIG}
+                formatSize={formatSize}
+              />
+            </Col>
+            <Col span={6}>
+              <div style={{
+                height: '90vh',
+                overflow: 'auto',
+                marginBottom: '8px'
+              }}>
+                <TextSettings
+                  textSettings={textSettings}
+                  setTextSettings={setTextSettings}
+                  badgeSettings={badgeSettings}
+                  exportSettings={exportSettings}
+                  setExportSettings={setExportSettings}
+                  UNIT_CONFIG={UNIT_CONFIG}
+                  formatSize={formatSize}
+                />
+              </div>
+            </Col>
+          </Row>
+        </Spin>
       </Content>
     </Layout>
   );
