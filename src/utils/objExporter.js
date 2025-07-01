@@ -53,20 +53,6 @@ export class BadgeOBJExporter {
     }
   }
 
-  // 数学工具函数（保留以备后用）
-  calculateLCM(a, b) {
-    return Math.abs(a * b) / this.calculateGCD(a, b);
-  }
-
-  calculateGCD(a, b) {
-    while (b !== 0) {
-      let temp = b;
-      b = a % b;
-      a = temp;
-    }
-    return a;
-  }
-
   // 创建轮廓点（优化版 - 确保水密性）
   createPoints(type, params) {
     const points = [];
@@ -169,40 +155,28 @@ export class BadgeOBJExporter {
 
   // 生成面（正面、背面、侧面）- 水密版 - 支持网格化
   generateFaces(vertices, uvs, pointCount, hasHole = false, holeVertices = [], holeUVs = [], thickness = 2.0, badgeSettings) {
-    if (hasHole) {
-      // 带孔洞的网格化面生成
-      const holePointCount = holeUVs.length / 2;
-      
-      // 正面网格化
-      this.createMeshFacesWithHole(
+    const holePointCount = hasHole ? holeUVs.length / 2 : 0;
+    
+    const frontFaceArgs = [
         vertices.slice(0, pointCount), uvs.slice(0, pointCount),
-        holeVertices.slice(0, holePointCount), holeUVs.slice(0, holePointCount),
-        true, badgeSettings, thickness
-      );
+        true, badgeSettings, thickness,
+        hasHole ? holeVertices.slice(0, holePointCount) : null,
+        hasHole ? holeUVs.slice(0, holePointCount) : null
+    ];
+    this.createMeshedFace(...frontFaceArgs);
       
-      // 背面网格化
-      this.createMeshFacesWithHole(
+    const backFaceArgs = [
         vertices.slice(pointCount), uvs.slice(pointCount),
-        holeVertices.slice(holePointCount), holeUVs.slice(holePointCount),
-        false, badgeSettings, thickness
-      );
-    } else {
-      // 普通面的网格化生成
-      this.createMeshFaces(
-        vertices.slice(0, pointCount), uvs.slice(0, pointCount),
-        true, badgeSettings, thickness
-      );
-      this.createMeshFaces(
-        vertices.slice(pointCount), uvs.slice(pointCount),
-        false, badgeSettings, thickness
-      );
-    }
+        false, badgeSettings, thickness,
+        hasHole ? holeVertices.slice(holePointCount) : null,
+        hasHole ? holeUVs.slice(holePointCount) : null
+    ];
+    this.createMeshedFace(...backFaceArgs);
     
     // 外侧面
     this.generateSideFaces(vertices, uvs, pointCount, false);
     if (hasHole) {
       // 孔洞内侧面
-      const holePointCount = holeUVs.length / 2;
       this.generateSideFaces(holeVertices, holeUVs, holePointCount, true);
     }
   }
@@ -493,162 +467,74 @@ export class BadgeOBJExporter {
     return triangleCount;
   }
 
+  // 通用的网格化面生成（重构后）
+  createMeshedFace(outerVertices, outerUVs, isFront, badgeSettings, thickness, innerVertices = null, innerUVs = null) {
+    const hasHole = !!innerVertices;
 
-
-  // 创建网格化面（无孔洞）- 重拓扑优化版
-  createMeshFaces(boundaryVertices, boundaryUVs, isFront, badgeSettings, thickness) {
     if (this.meshQuality.enableRetopology) {
       // 使用新的重拓扑算法
-      const { meshVertices, meshUVs, gridWidth, gridHeight } = this.createRetopologyMeshVertices(
-        boundaryVertices, isFront, badgeSettings, thickness
-      );
-      
-      // 生成重拓扑三角面
-      const triangleCount = this.generateRetopologyTriangles(meshVertices, meshUVs, gridWidth, gridHeight, isFront);
-      
-      // 生成孔洞边界填补三角形
-      const holeFillTriangles = this.generateHoleBoundaryTriangles(meshVertices, meshUVs, isFront);
-      
-      // 根据质量设置决定是否进行边界连接
-      if (this.meshQuality.enableBoundaryConnection) {
-        this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, boundaryVertices, boundaryUVs, isFront);
-      }
-      
-      console.log(`重拓扑${isFront ? '正面' : '背面'}：生成了${triangleCount + holeFillTriangles}个三角形（主面${triangleCount}个，填补${holeFillTriangles}个），网格密度${gridWidth}x${gridHeight}`);
-    } else {
-      // 使用原始算法（保持向后兼容）
-    const { width, height } = badgeSettings;
-    const z = isFront ? thickness / 2 : -thickness / 2;
-    const density = this.meshDensity.density;
-    // 创建网格顶点
-    const meshVertices = [];
-    const meshUVs = [];
-    
-    // 生成网格内部顶点
-    for (let j = 0; j <= density; j++) {
-      for (let i = 0; i <= density; i++) {
-        const u = i / density;
-        const v = j / density;
-        
-        // 计算网格点在工牌范围内的坐标
-        const x = (u - 0.5) * width;
-        const y = (v - 0.5) * height;
-        
-        // 检查点是否在边界内
-        if (this.isPointInPolygon(x, y, boundaryVertices)) {
-          const vertexIndex = this.addVertex(x, y, z);
-          // 背面使用镜像UV坐标
-          const uvU = isFront ? u : (1.0 - u);
-          const uvV = v;
-          const uvIndex = this.addUV(uvU, uvV);
-          meshVertices.push({ index: vertexIndex, x, y, gridX: i, gridY: j });
-          meshUVs.push(uvIndex);
-        } else {
-          meshVertices.push(null);
-          meshUVs.push(null);
-        }
-      }
-    }
-    
-    // 生成网格三角形
-    for (let j = 0; j < density; j++) {
-      for (let i = 0; i < density; i++) {
-        const idx = j * (density + 1) + i;
-        const v1 = meshVertices[idx];
-        const v2 = meshVertices[idx + 1];
-        const v3 = meshVertices[idx + density + 1];
-        const v4 = meshVertices[idx + density + 2];
-        
-        const uv1 = meshUVs[idx];
-        const uv2 = meshUVs[idx + 1];
-        const uv3 = meshUVs[idx + density + 1];
-        const uv4 = meshUVs[idx + density + 2];
-        
-        // 生成两个三角形（如果所有顶点都存在）
-        if (v1 && v2 && v3) {
-          if (isFront) {
-            this.addFace(v1.index, v2.index, v3.index, uv1, uv2, uv3);
-          } else {
-            this.addFace(v1.index, v3.index, v2.index, uv1, uv3, uv2);
-          }
-        }
-        
-        if (v2 && v3 && v4) {
-          if (isFront) {
-            this.addFace(v2.index, v4.index, v3.index, uv2, uv4, uv3);
-          } else {
-            this.addFace(v2.index, v3.index, v4.index, uv2, uv3, uv4);
-          }
-        }
-      }
-    }
-    
-    // 根据质量设置决定是否进行边界连接
-    if (this.meshQuality.enableBoundaryConnection) {
-      this.createSimpleBoundaryConnection(meshVertices, meshUVs, boundaryVertices, boundaryUVs, isFront);
-    }
-    }
-  }
-
-  // 创建带孔洞的网格化面 - 重拓扑优化版
-  createMeshFacesWithHole(outerVertices, outerUVs, innerVertices, innerUVs, isFront, badgeSettings, thickness) {
-    if (this.meshQuality.enableRetopology) {
-      // 使用新的重拓扑算法处理带孔洞的面
       const { meshVertices, meshUVs, gridWidth, gridHeight } = this.createRetopologyMeshVertices(
         outerVertices, isFront, badgeSettings, thickness, innerVertices
       );
       
-      // 生成重拓扑三角面
       const triangleCount = this.generateRetopologyTriangles(meshVertices, meshUVs, gridWidth, gridHeight, isFront);
-      
-      // 生成孔洞边界填补三角形
       const holeFillTriangles = this.generateHoleBoundaryTriangles(meshVertices, meshUVs, isFront);
       
-      // 根据质量设置决定是否进行边界连接
       if (this.meshQuality.enableBoundaryConnection) {
-        // 外边界连接（使用重拓扑边界连接，包含角落修复）
         this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, outerVertices, outerUVs, isFront, false);
-        // 内边界（孔洞）连接（使用重拓扑边界连接，包含角落修复）
-        this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, innerVertices, innerUVs, isFront, true);
+        if (hasHole) {
+          this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, innerVertices, innerUVs, isFront, true);
+        }
       }
       
-      console.log(`重拓扑带孔${isFront ? '正面' : '背面'}：生成了${triangleCount + holeFillTriangles}个三角形（主面${triangleCount}个，填补${holeFillTriangles}个），网格密度${gridWidth}x${gridHeight}`);
+      console.log(`重拓扑${hasHole ? '带孔' : ''}${isFront ? '正面' : '背面'}：生成了${triangleCount + holeFillTriangles}个三角形（主面${triangleCount}个，填补${holeFillTriangles}个），网格密度${gridWidth}x${gridHeight}`);
     } else {
       // 使用原始算法（保持向后兼容）
-    const { width, height } = badgeSettings;
-    const z = isFront ? thickness / 2 : -thickness / 2;
-    const density = this.meshDensity.density;
-    // 创建网格顶点
-    const meshVertices = [];
-    const meshUVs = [];
-    
-    // 生成网格内部顶点
-    for (let j = 0; j <= density; j++) {
-      for (let i = 0; i <= density; i++) {
-        const u = i / density;
-        const v = j / density;
-        
-        // 计算网格点在工牌范围内的坐标
-        const x = (u - 0.5) * width;
-        const y = (v - 0.5) * height;
-        
-        // 检查点是否在外边界内且不在孔洞内
-        if (this.isPointInPolygon(x, y, outerVertices) && !this.isPointInPolygon(x, y, innerVertices)) {
-          const vertexIndex = this.addVertex(x, y, z);
-          // 背面使用镜像UV坐标
-          const uvU = isFront ? u : (1.0 - u);
-          const uvV = v;
-          const uvIndex = this.addUV(uvU, uvV);
-          meshVertices.push({ index: vertexIndex, x, y, gridX: i, gridY: j });
-          meshUVs.push(uvIndex);
-        } else {
-          meshVertices.push(null);
-          meshUVs.push(null);
+      const { width, height } = badgeSettings;
+      const z = isFront ? thickness / 2 : -thickness / 2;
+      const density = this.meshDensity.density;
+      const meshVertices = [];
+      const meshUVs = [];
+      
+      for (let j = 0; j <= density; j++) {
+        for (let i = 0; i <= density; i++) {
+          const u = i / density;
+          const v = j / density;
+          const x = (u - 0.5) * width;
+          const y = (v - 0.5) * height;
+          
+          let isInside = this.isPointInPolygon(x, y, outerVertices);
+          if (hasHole) {
+            isInside = isInside && !this.isPointInPolygon(x, y, innerVertices);
+          }
+          
+          if (isInside) {
+            const vertexIndex = this.addVertex(x, y, z);
+            const uvU = isFront ? u : (1.0 - u);
+            const uvV = v;
+            const uvIndex = this.addUV(uvU, uvV);
+            meshVertices.push({ index: vertexIndex, x, y, gridX: i, gridY: j });
+            meshUVs.push(uvIndex);
+          } else {
+            meshVertices.push(null);
+            meshUVs.push(null);
+          }
+        }
+      }
+      
+      this.generateGridTriangles(meshVertices, meshUVs, density, isFront);
+      
+      if (this.meshQuality.enableBoundaryConnection) {
+        this.createSimpleBoundaryConnection(meshVertices, meshUVs, outerVertices, outerUVs, isFront, false);
+        if (hasHole) {
+          this.createSimpleBoundaryConnection(meshVertices, meshUVs, innerVertices, innerUVs, isFront, true);
         }
       }
     }
-    
-    // 生成网格三角形（与无孔洞版本相同）
+  }
+
+  // 为旧版网格生成三角形
+  generateGridTriangles(meshVertices, meshUVs, density, isFront) {
     for (let j = 0; j < density; j++) {
       for (let i = 0; i < density; i++) {
         const idx = j * (density + 1) + i;
@@ -662,7 +548,6 @@ export class BadgeOBJExporter {
         const uv3 = meshUVs[idx + density + 1];
         const uv4 = meshUVs[idx + density + 2];
         
-        // 生成两个三角形（如果所有顶点都存在）
         if (v1 && v2 && v3) {
           if (isFront) {
             this.addFace(v1.index, v2.index, v3.index, uv1, uv2, uv3);
@@ -678,15 +563,6 @@ export class BadgeOBJExporter {
             this.addFace(v2.index, v3.index, v4.index, uv2, uv3, uv4);
           }
         }
-      }
-    }
-    
-    // 根据质量设置决定是否进行边界连接
-    if (this.meshQuality.enableBoundaryConnection) {
-        // 外边界连接
-        this.createSimpleBoundaryConnection(meshVertices, meshUVs, outerVertices, outerUVs, isFront, false);
-        // 内边界（孔洞）连接
-      this.createSimpleBoundaryConnection(meshVertices, meshUVs, innerVertices, innerUVs, isFront, true);
       }
     }
   }
@@ -1063,11 +939,6 @@ export class BadgeOBJExporter {
          return inside;
    }
 
-  // 检查三角形是否有效（无重复顶点）- 保留以备后用
-  isValidTriangle(v1, v2, v3) {
-    return v1 !== v2 && v2 !== v3 && v1 !== v3;
-  }
-
   // 生成侧面 - 侧面不使用贴图映射
   generateSideFaces(vertices, uvs, pointCount, inward) {
     // 创建侧面专用的白色UV坐标
@@ -1114,20 +985,17 @@ export class BadgeOBJExporter {
 
   // 生成单面模型
   generateSingleSidedModel(outerPoints, holeSettings, width, height, thickness) {
-    // 使用单面模式创建顶点和UV（背面将使用白色UV）
-    const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, false);
+    const doubleSided = false;
+    const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, doubleSided);
 
     if (holeSettings.enabled) {
       const { holeParams, holeType } = this.calculateHoleParams(holeSettings, width, height);
       const innerPoints = this.createPoints(holeType, holeParams);
-      const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height, false);
-
-              // 生成完整的带孔洞模型（包括正面、背面、侧面）
-        this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs, thickness, { width, height });
-      } else {
-        // 生成完整的普通模型（包括正面、背面、侧面）
-        this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, false, [], [], thickness, { width, height });
-      }
+      const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height, doubleSided);
+      this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs, thickness, { width, height });
+    } else {
+      this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, false, [], [], thickness, { width, height });
+    }
   }
 
   // 主要生成函数
@@ -1144,20 +1012,16 @@ export class BadgeOBJExporter {
     const outerPoints = this.createPoints('rectangle', { width, height, borderRadius });
     
     if (exportSettings.doubleSided) {
-      // 双面模型 - 创建完整的3D结构
       const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, true);
-
       if (holeSettings.enabled) {
         const { holeParams, holeType } = this.calculateHoleParams(holeSettings, width, height);
         const innerPoints = this.createPoints(holeType, holeParams);
         const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height, true);
-        
         this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs, thickness, badgeSettings);
       } else {
         this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, false, [], [], thickness, badgeSettings);
       }
     } else {
-      // 单面模型 - 只创建正面
       this.generateSingleSidedModel(outerPoints, holeSettings, width, height, thickness);
     }
 
@@ -1191,8 +1055,19 @@ export class BadgeOBJExporter {
     return `# 工牌材质文件 - 重拓扑优化版本\n# 生成时间: ${new Date().toLocaleString('zh-CN')}\n# 优化特性: 重拓扑密集网格，正方形划分，便于顶点颜色映射\nnewmtl badge_material\nKa 0.2 0.2 0.2\nKd 0.8 0.8 0.8\nKs 0.1 0.1 0.1\nNs 10.0\nd 1.0\nillum 2\nmap_Kd badge_texture.png\n`;
   }
 
+  // 异步加载图片
+  loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = (err) => reject(err);
+      img.src = src;
+    });
+  }
+
   // 生成贴图
-  generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings) {
+  async generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
@@ -1274,74 +1149,48 @@ export class BadgeOBJExporter {
       }
     }
     
-    // 绘制左下角白色区域（供单面模型背面使用）
-    this.drawWhiteCorner(ctx, canvasWidth, canvasHeight);
-    
     // 绘制图片和文字
     if (imageSettings.src) {
-      return new Promise(resolve => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          ctx.globalAlpha = imageSettings.opacity;
-          
-          // 实现 objectFit: 'cover' 效果，与页面预览保持一致
-          // 页面预览使用左上角为原点的坐标系，直接转换到画布坐标系
-          const targetX = imageSettings.x * scaleX;
-          const targetY = imageSettings.y * scaleY;
-          const targetWidth = imageSettings.width * scaleX;
-          const targetHeight = imageSettings.height * scaleY;
-          
-          // 计算图片的缩放比例（保持宽高比的同时填充整个区域）
-          const imageAspect = img.width / img.height;
-          const targetAspect = targetWidth / targetHeight;
-          
-          let drawWidth, drawHeight, drawX, drawY;
-          let sourceX = 0, sourceY = 0, sourceWidth = img.width, sourceHeight = img.height;
-          
-          if (imageAspect > targetAspect) {
-            // 图片比目标区域更宽，需要裁剪左右两边
-            const scaledHeight = img.height;
-            const scaledWidth = scaledHeight * targetAspect;
-            sourceX = (img.width - scaledWidth) / 2;
-            sourceWidth = scaledWidth;
-            drawX = targetX;
-            drawY = targetY;
-            drawWidth = targetWidth;
-            drawHeight = targetHeight;
-          } else {
-            // 图片比目标区域更高，需要裁剪上下两边
-            const scaledWidth = img.width;
-            const scaledHeight = scaledWidth / targetAspect;
-            sourceY = (img.height - scaledHeight) / 2;
-            sourceHeight = scaledHeight;
-            drawX = targetX;
-            drawY = targetY;
-            drawWidth = targetWidth;
-            drawHeight = targetHeight;
-          }
-          
-          // 使用裁剪后的图片区域绘制
-          ctx.drawImage(
-            img, 
-            sourceX, sourceY, sourceWidth, sourceHeight,  // 源图片的裁剪区域
-            drawX, drawY, drawWidth, drawHeight           // 目标画布的绘制区域
-          );
-          
-          this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY, canvasWidth, canvasHeight);
-          // 确保左下角保持白色
-          ctx.globalAlpha = 1.0;
-          this.drawWhiteCorner(ctx, canvasWidth, canvasHeight);
-          resolve(canvas);
-        };
-        img.src = imageSettings.src;
-      });
-    } else {
-      this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY, canvasWidth, canvasHeight);
-      // 确保左下角保持白色
-      this.drawWhiteCorner(ctx, canvasWidth, canvasHeight);
-      return Promise.resolve(canvas);
+      try {
+        const img = await this.loadImage(imageSettings.src);
+        ctx.globalAlpha = imageSettings.opacity;
+        
+        // 实现 objectFit: 'cover' 效果，与页面预览保持一致
+        const targetX = imageSettings.x * scaleX;
+        const targetY = imageSettings.y * scaleY;
+        const targetWidth = imageSettings.width * scaleX;
+        const targetHeight = imageSettings.height * scaleY;
+        
+        const imageAspect = img.width / img.height;
+        const targetAspect = targetWidth / targetHeight;
+        
+        let sourceX = 0, sourceY = 0, sourceWidth = img.width, sourceHeight = img.height;
+        
+        if (imageAspect > targetAspect) {
+          sourceWidth = img.height * targetAspect;
+          sourceX = (img.width - sourceWidth) / 2;
+        } else {
+          sourceHeight = img.width / targetAspect;
+          sourceY = (img.height - sourceHeight) / 2;
+        }
+        
+        ctx.drawImage(
+          img, 
+          sourceX, sourceY, sourceWidth, sourceHeight,
+          targetX, targetY, targetWidth, targetHeight
+        );
+      } catch (e) {
+        console.error('无法加载贴图图片:', e);
+      }
     }
+    
+    this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY, canvasWidth, canvasHeight);
+    
+    // 绘制左下角白色区域（供单面模型背面使用），确保在最上层
+    ctx.globalAlpha = 1.0;
+    this.drawWhiteCorner(ctx, canvasWidth, canvasHeight);
+    
+    return canvas;
   }
 
   // 绘制左下角白色区域（供单面模型背面使用）
