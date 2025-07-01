@@ -210,30 +210,34 @@ export class BadgeOBJExporter {
   }
 
   // 生成面（正面、背面、侧面）- 水密版 - 支持网格化
-  generateFaces(vertices, uvs, pointCount, hasHole = false, holeVertices = [], holeUVs = [], thickness = 2.0, badgeSettings) {
-    const holePointCount = hasHole ? holeUVs.length / 2 : 0;
+  generateFaces(vertices, uvs, pointCount, holeInfo, thickness, badgeSettings) {
+    const holePointCount = holeInfo.enabled ? holeInfo.uvs.length / 2 : 0;
     
     const frontFaceArgs = [
         vertices.slice(0, pointCount), uvs.slice(0, pointCount),
         true, badgeSettings, thickness,
-        hasHole ? holeVertices.slice(0, holePointCount) : null,
-        hasHole ? holeUVs.slice(0, holePointCount) : null
+        holeInfo.enabled ? holeInfo.vertices.slice(0, holePointCount) : null,
+        holeInfo.enabled ? holeInfo.uvs.slice(0, holePointCount) : null,
+        holeInfo.params,
+        holeInfo.type
     ];
     this.createMeshedFace(...frontFaceArgs);
       
     const backFaceArgs = [
         vertices.slice(pointCount), uvs.slice(pointCount),
         false, badgeSettings, thickness,
-        hasHole ? holeVertices.slice(holePointCount) : null,
-        hasHole ? holeUVs.slice(holePointCount) : null
+        holeInfo.enabled ? holeInfo.vertices.slice(holePointCount) : null,
+        holeInfo.enabled ? holeInfo.uvs.slice(holePointCount) : null,
+        holeInfo.params,
+        holeInfo.type
     ];
     this.createMeshedFace(...backFaceArgs);
     
     // 外侧面
     this.generateSideFaces(vertices, uvs, pointCount, false);
-    if (hasHole) {
+    if (holeInfo.enabled) {
       // 孔洞内侧面
-      this.generateSideFaces(holeVertices, holeUVs, holePointCount, true);
+      this.generateSideFaces(holeInfo.vertices, holeInfo.uvs, holePointCount, true);
     }
   }
 
@@ -251,7 +255,7 @@ export class BadgeOBJExporter {
   }
 
   // 创建重拓扑网格顶点 - 专门用于高密度网格生成
-  createRetopologyMeshVertices(boundaryVertices, isFront, badgeSettings, thickness, holeVertices = null) {
+  createRetopologyMeshVertices(boundaryVertices, isFront, badgeSettings, thickness, holeVertices = null, holeParams = null, holeType = null) {
     const { width, height } = badgeSettings;
     const z = isFront ? thickness / 2 : -thickness / 2;
     
@@ -275,7 +279,8 @@ export class BadgeOBJExporter {
         // 检查点是否在有效区域内
         let isValid = this.isPointInPolygon(x, y, boundaryVertices);
         if (holeVertices && isValid) {
-          isValid = !this.isPointInPolygon(x, y, holeVertices);
+          // 优化：使用快速的孔洞检查算法替换通用的多边形检查
+          isValid = !this.isPointInHole(x, y, holeParams, holeType);
         }
         
         if (isValid) {
@@ -566,13 +571,13 @@ export class BadgeOBJExporter {
   }
 
   // 通用的网格化面生成（重构后）
-  createMeshedFace(outerVertices, outerUVs, isFront, badgeSettings, thickness, innerVertices = null, innerUVs = null) {
+  createMeshedFace(outerVertices, outerUVs, isFront, badgeSettings, thickness, innerVertices = null, innerUVs = null, holeParams = null, holeType = null) {
     const hasHole = !!innerVertices;
 
     if (this.meshQuality.enableRetopology) {
       // 使用新的重拓扑算法
       const { meshVertices, meshUVs, gridWidth, gridHeight } = this.createRetopologyMeshVertices(
-        outerVertices, isFront, badgeSettings, thickness, innerVertices
+        outerVertices, isFront, badgeSettings, thickness, innerVertices, holeParams, holeType
       );
       
       const triangleCount = this.generateRetopologyTriangles(meshVertices, meshUVs, gridWidth, gridHeight, isFront);
@@ -603,7 +608,8 @@ export class BadgeOBJExporter {
           
           let isInside = this.isPointInPolygon(x, y, outerVertices);
           if (hasHole) {
-            isInside = isInside && !this.isPointInPolygon(x, y, innerVertices);
+            // 优化：使用快速的孔洞检查算法
+            isInside = isInside && !this.isPointInHole(x, y, holeParams, holeType);
           }
           
           if (isInside) {
@@ -746,13 +752,12 @@ export class BadgeOBJExporter {
 
       if (isHole) {
         // 孔洞：每个边界点只找最近的一个网格点
+        // 优化：移除多余的 isPointInPolygon 检查，因为空间网格中的点已确保在孔洞外
         searchCandidates.forEach(mv => {
-          if (!this.isPointInPolygon(mv.x, mv.y, boundaryVertices)) { // 空间网格已过滤isHoleBoundary
-            const dist = Math.sqrt((mv.x - bp.x) ** 2 + (mv.y - bp.y) ** 2);
-            if (dist < minDist) {
-              minDist = dist;
-              nearestVertex = mv;
-            }
+          const dist = Math.sqrt((mv.x - bp.x) ** 2 + (mv.y - bp.y) ** 2);
+          if (dist < minDist) {
+            minDist = dist;
+            nearestVertex = mv;
           }
         });
         if (nearestVertex) {
@@ -921,11 +926,8 @@ export class BadgeOBJExporter {
 
       if (isHole) {
         // 孔洞：寻找孔洞边界外围的网格顶点
+        // 优化：移除多余的 isPointInPolygon 检查
         nearbyVertices = searchCandidates
-          .filter(mv => {
-            const mvPoint = { x: mv.x, y: mv.y };
-            return !this.isPointInPolygon(mvPoint.x, mvPoint.y, boundaryVertices);
-          })
           .map(mv => ({
             ...mv,
             distance: Math.sqrt((mv.x - corner.point.x) ** 2 + (mv.y - corner.point.y) ** 2)
@@ -1048,6 +1050,56 @@ export class BadgeOBJExporter {
          return inside;
    }
 
+  // 专门用于判断点是否在孔洞内的快速算法
+  isPointInHole(x, y, holeParams, holeType) {
+    if (!holeParams || !holeType) {
+      return false;
+    }
+
+    const { centerX, centerY } = holeParams;
+
+    if (holeType === 'circle') {
+      const { radius } = holeParams;
+      return (x - centerX) ** 2 + (y - centerY) ** 2 < radius ** 2;
+    }
+
+    if (holeType === 'oval') {
+      const radiusX = holeParams.width / 2;
+      const radiusY = holeParams.height / 2;
+      // Handle potential division by zero
+      if (radiusX === 0 || radiusY === 0) return false;
+      return ((x - centerX) / radiusX) ** 2 + ((y - centerY) / radiusY) ** 2 < 1;
+    }
+
+    if (holeType === 'rectangle') {
+      const { width, height, borderRadius = 0 } = holeParams;
+      const w = width / 2;
+      const h = height / 2;
+
+      // Simple Axis-Aligned Bounding Box check first for speed
+      if (x < centerX - w || x > centerX + w || y < centerY - h || y > centerY + h) {
+          return false;
+      }
+      
+      if (borderRadius <= 0.1) {
+        // It's inside the bounding box and no border radius, so it's in.
+        return true;
+      }
+
+      // Check for rounded rectangle
+      const dx = Math.abs(x - centerX);
+      const dy = Math.abs(y - centerY);
+
+      if (dx <= w - borderRadius || dy <= h - borderRadius) return true;
+      
+      // Check corner regions
+      const cornerDistSq = (dx - (w - borderRadius)) ** 2 + (dy - (h - borderRadius)) ** 2;
+      return cornerDistSq <= borderRadius ** 2;
+    }
+
+    return false; // Fallback for unsupported types
+  }
+
   // 生成侧面 - 侧面不使用贴图映射
   generateSideFaces(vertices, uvs, pointCount, inward) {
     // 创建侧面专用的白色UV坐标
@@ -1097,14 +1149,19 @@ export class BadgeOBJExporter {
     const doubleSided = false;
     const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, doubleSided);
 
+    const holeInfo = { enabled: false };
     if (holeSettings.enabled) {
       const { holeParams, holeType } = this.calculateHoleParams(holeSettings, width, height);
       const innerPoints = this.createPoints(holeType, holeParams);
       const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height, doubleSided);
-      this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs, thickness, { width, height });
-    } else {
-      this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, false, [], [], thickness, { width, height });
+      holeInfo.enabled = true;
+      holeInfo.vertices = inner.vertices;
+      holeInfo.uvs = inner.uvs;
+      holeInfo.params = holeParams;
+      holeInfo.type = holeType;
     }
+    
+    this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, holeInfo, thickness, { width, height });
   }
 
   // 主要生成函数
@@ -1122,14 +1179,20 @@ export class BadgeOBJExporter {
     
     if (exportSettings.doubleSided) {
       const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, true);
+      
+      const holeInfo = { enabled: false };
       if (holeSettings.enabled) {
         const { holeParams, holeType } = this.calculateHoleParams(holeSettings, width, height);
         const innerPoints = this.createPoints(holeType, holeParams);
         const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height, true);
-        this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, true, inner.vertices, inner.uvs, thickness, badgeSettings);
-      } else {
-        this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, false, [], [], thickness, badgeSettings);
+        holeInfo.enabled = true;
+        holeInfo.vertices = inner.vertices;
+        holeInfo.uvs = inner.uvs;
+        holeInfo.params = holeParams;
+        holeInfo.type = holeType;
       }
+
+      this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, holeInfo, thickness, badgeSettings);
     } else {
       this.generateSingleSidedModel(outerPoints, holeSettings, width, height, thickness);
     }
