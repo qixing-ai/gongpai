@@ -560,19 +560,7 @@ export class BadgeOBJExporter {
       outerVertices, isFront, badgeSettings, thickness, innerVertices, holeParams, holeType
     );
     
-    const triangleCount = this.generateRetopologyTriangles(meshVertices, meshUVs, gridWidth, gridHeight, isFront);
-    
-    // 优化：预先计算顶点列表并为孔洞连接创建空间网格
-    const validMeshVertices = meshVertices.filter(v => v !== null);
-    const holeBoundaryVertices = validMeshVertices.filter(v => v.isHoleBoundary);
-    const regularMeshVertices = validMeshVertices.filter(v => !v.isHoleBoundary);
-    let holeFillTriangles = 0;
-
-    if (hasHole && holeBoundaryVertices.length > 0 && regularMeshVertices.length > 0) {
-      const cellSize = Math.max(badgeSettings.width, badgeSettings.height) / Math.max(gridWidth, gridHeight, 1);
-      const regularMeshSpatialGrid = this._createSpatialGrid(regularMeshVertices, cellSize);
-      holeFillTriangles = this.generateHoleBoundaryTriangles(meshVertices, meshUVs, holeBoundaryVertices, regularMeshVertices, isFront, regularMeshSpatialGrid);
-    }
+    this.generateRetopologyTriangles(meshVertices, meshUVs, gridWidth, gridHeight, isFront);
     
     if (this.meshQuality.enableBoundaryConnection) {
       this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, outerVertices, outerUVs, isFront, false, badgeSettings);
@@ -644,38 +632,15 @@ export class BadgeOBJExporter {
           }
         }
       }
-    }
+    } else {
+      // 外边界的连接逻辑
+      const connectionMap = new Map();
     
-    // 外边界或者孔洞边界点未集成时的原有逻辑
-    const connectionMap = new Map();
-    
-    boundaryPoints.forEach((bp, bpIndex) => {
-      let nearestVertex = null;
-      let minDist = Infinity;
-      
-      // 使用空间网格进行优化
-      const searchCandidates = this._queryNearbyVertices(spatialGrid, bp.x, bp.y, 2);
-
-      if (isHole) {
-        // 孔洞：每个边界点只找最近的一个网格点
-        // 优化：移除多余的 isPointInPolygon 检查，因为空间网格中的点已确保在孔洞外
-        // 优化：使用距离平方避免开方
-        let minSqDist = Infinity;
-        searchCandidates.forEach(mv => {
-          const distSq = (mv.x - bp.x) ** 2 + (mv.y - bp.y) ** 2;
-          if (distSq < minSqDist) {
-            minSqDist = distSq;
-            nearestVertex = mv;
-          }
-        });
-        if (nearestVertex) {
-          connectionMap.set(bpIndex, [nearestVertex]);
-        } else {
-          connectionMap.set(bpIndex, []);
-        }
-      } else {
-        // 外边界：保持原有逻辑
-        // 优化：使用距离平方避免开方
+      boundaryPoints.forEach((bp, bpIndex) => {
+        // 使用空间网格进行优化
+        const searchCandidates = this._queryNearbyVertices(spatialGrid, bp.x, bp.y, 2);
+        
+        // 外边界：查找最近的几个网格点
         const nearbyVertices = searchCandidates
           .map(mv => ({
             ...mv,
@@ -684,41 +649,34 @@ export class BadgeOBJExporter {
           .sort((a, b) => a.distanceSq - b.distanceSq)
           .slice(0, Math.min(2, searchCandidates.length));
         connectionMap.set(bpIndex, nearbyVertices);
-      }
-    });
-    
-    // 生成连接三角形
-    let connectionCount = 0;
-    for (let i = 0; i < boundaryPoints.length; i++) {
-      const nextI = (i + 1) % boundaryPoints.length;
-      const currentConnections = connectionMap.get(i) || [];
-      const nextConnections = connectionMap.get(nextI) || [];
+      });
       
-      if (currentConnections.length > 0 && nextConnections.length > 0) {
-        const bv1 = boundaryVertices[i];
-        const bv2 = boundaryVertices[nextI];
-        const buv1 = boundaryUVs[i];
-        const buv2 = boundaryUVs[nextI];
+      // 生成连接三角形
+      let connectionCount = 0;
+      for (let i = 0; i < boundaryPoints.length; i++) {
+        const nextI = (i + 1) % boundaryPoints.length;
+        const currentConnections = connectionMap.get(i) || [];
+        const nextConnections = connectionMap.get(nextI) || [];
         
-        // 选择最近的网格顶点进行连接
-        const mv1 = currentConnections[0];
-        const mv2 = nextConnections[0];
-        
-        const muv1 = meshUVs[mv1.gridY * (gridWidth + 1) + mv1.gridX];
-        const muv2 = meshUVs[mv2.gridY * (gridWidth + 1) + mv2.gridX];
-        
-        if (muv1 && muv2) {
-          // 使用带法线检查的面添加方法，确保法线方向正确
-          if (isHole) {
-            // 孔洞边界：使用特殊的顶点顺序
-            this.addFaceWithNormalCheck(bv1, bv2, mv1.index, buv1, buv2, muv1, isFront);
-            this.addFaceWithNormalCheck(bv2, mv2.index, mv1.index, buv2, muv2, muv1, isFront);
-          } else {
+        if (currentConnections.length > 0 && nextConnections.length > 0) {
+          const bv1 = boundaryVertices[i];
+          const bv2 = boundaryVertices[nextI];
+          const buv1 = boundaryUVs[i];
+          const buv2 = boundaryUVs[nextI];
+          
+          // 选择最近的网格顶点进行连接
+          const mv1 = currentConnections[0];
+          const mv2 = nextConnections[0];
+          
+          const muv1 = meshUVs[mv1.gridY * (gridWidth + 1) + mv1.gridX];
+          const muv2 = meshUVs[mv2.gridY * (gridWidth + 1) + mv2.gridX];
+          
+          if (muv1 && muv2) {
             // 外边界：正常顶点顺序
             this.addFaceWithNormalCheck(bv1, mv1.index, bv2, buv1, muv1, buv2, isFront);
             this.addFaceWithNormalCheck(mv1.index, mv2.index, bv2, muv1, muv2, buv2, isFront);
+            connectionCount += 2;
           }
-          connectionCount += 2;
         }
       }
     }
