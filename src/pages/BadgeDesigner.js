@@ -106,41 +106,52 @@ const BadgeDesigner = () => {
 
   // 导出工牌为OBJ模型
   const exportBadge = (for3DPrinting = false) => {
+    // 如果已经在加载中，直接返回
+    if (loading) {
+      return;
+    }
+    
     setLoading(true);
     
-    setTimeout(async () => {
-      try {
-        const loadingMessage = for3DPrinting 
-          ? '正在生成用于3D打印的OBJ模型...' 
-          : '正在生成OBJ模型...';
-        message.loading(loadingMessage, 0);
-        
-        const { exportBadgeAsOBJ } = await import('../utils/objExporter');
-        
-        const result = await exportBadgeAsOBJ(
-          badgeSettings, 
-          holeSettings, 
-          imageSettings, 
-          textSettings,
-          exportSettings,
-          { for3DPrinting }
-        );
-        
-        message.destroy(); // 清除loading消息
-        
-        if (result.success) {
-          message.success(result.message, 5);
-        } else {
-          message.error(result.message);
+    // 使用 requestAnimationFrame 确保 UI 更新
+    requestAnimationFrame(() => {
+      setTimeout(async () => {
+        try {
+          const loadingMessage = for3DPrinting 
+            ? '正在生成用于3D打印的OBJ模型...' 
+            : '正在生成OBJ模型...';
+          message.loading(loadingMessage, 0);
+          
+          const { exportBadgeAsOBJ } = await import('../utils/objExporter');
+          
+          const result = await exportBadgeAsOBJ(
+            badgeSettings, 
+            holeSettings, 
+            imageSettings, 
+            textSettings,
+            exportSettings,
+            { for3DPrinting }
+          );
+          
+          message.destroy(); // 清除loading消息
+          
+          if (result.success) {
+            message.success(result.message, 5);
+          } else {
+            message.error(result.message);
+          }
+        } catch (error) {
+          message.destroy();
+          message.error('导出失败：' + error.message);
+          console.error('导出错误:', error);
+        } finally {
+          // 确保加载状态被重置
+          setTimeout(() => {
+            setLoading(false);
+          }, 100);
         }
-      } catch (error) {
-        message.destroy();
-        message.error('导出失败：' + error.message);
-        console.error('导出错误:', error);
-      } finally {
-        setLoading(false);
-      }
-    }, 0);
+      }, 50);
+    });
   };
 
   // 重置设计
