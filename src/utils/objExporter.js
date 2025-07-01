@@ -1,18 +1,25 @@
 // 水密OBJ模型导出工具 - 优化版
 export class BadgeOBJExporter {
-  constructor() {
+  constructor(options = {}) {
     this.vertices = [];
     this.uvs = [];
     this.faces = [];
     this.vertexIndex = 1;
+
+    // 3D打印模式设置
+    this.for3DPrinting = options.for3DPrinting || false;
+    this.textureCanvas = options.textureCanvas || null; // 传入纹理画布
+    if (this.for3DPrinting && !this.textureCanvas) {
+      console.warn('3D打印模式需要一个有效的纹理画布来提取顶点颜色。');
+    }
+
     // 网格划分密度设置 - 只用一个参数 density
     this.meshDensity = { density: 20 }; // 默认值
     // 网格质量设置
     this.meshQuality = { 
       enableBoundaryConnection: true,  // 是否启用边界连接
       maxBoundaryConnections: 3,       // 最大边界连接数
-      enableRetopology: true,          // 是否启用重拓扑优化
-      retopologyDensity: 'high'        // 重拓扑密度：'low', 'medium', 'high', 'ultra'
+      enableRetopology: true          // 是否启用重拓扑优化
     };
   }
 
@@ -22,19 +29,51 @@ export class BadgeOBJExporter {
   }
 
   // 设置网格质量
-  setMeshQuality(enableBoundaryConnection = true, maxBoundaryConnections = 3, enableRetopology = true, retopologyDensity = 'high') {
+  setMeshQuality(enableBoundaryConnection = true, maxBoundaryConnections = 3, enableRetopology = true) {
     this.meshQuality = { 
       enableBoundaryConnection, 
       maxBoundaryConnections,
-      enableRetopology,
-      retopologyDensity
+      enableRetopology
     };
   }
 
-  // 添加顶点
+  // 添加顶点 - 支持顶点颜色
   addVertex(x, y, z) {
-    this.vertices.push({ x, y, z });
+    const vertex = { x, y, z };
+    if (this.for3DPrinting && this.textureCanvas) {
+      // UV坐标此时未知，颜色将在UV确定后添加
+      vertex.color = { r: 1, g: 1, b: 1 }; // 默认为白色
+    }
+    this.vertices.push(vertex);
     return this.vertexIndex++;
+  }
+
+  // 更新顶点的颜色
+  updateVertexColor(vertexIndex, u, v) {
+    if (this.for3DPrinting && this.textureCanvas && vertexIndex > 0 && vertexIndex <= this.vertices.length) {
+      const color = this.getVertexColor(u, v);
+      this.vertices[vertexIndex - 1].color = color;
+    }
+  }
+
+  // 从纹理画布中获取指定UV坐标的颜色
+  getVertexColor(u, v) {
+    if (!this.textureCanvas) return { r: 1, g: 1, b: 1 };
+
+    const ctx = this.textureCanvas.getContext('2d');
+    const x = Math.floor(u * this.textureCanvas.width);
+    const y = Math.floor((1 - v) * this.textureCanvas.height); // V坐标通常是反的
+    
+    // clamp coordinates
+    const clampedX = Math.max(0, Math.min(x, this.textureCanvas.width - 1));
+    const clampedY = Math.max(0, Math.min(y, this.textureCanvas.height - 1));
+
+    const pixelData = ctx.getImageData(clampedX, clampedY, 1, 1).data;
+    return {
+      r: pixelData[0] / 255.0,
+      g: pixelData[1] / 255.0,
+      b: pixelData[2] / 255.0,
+    };
   }
 
   // 添加UV坐标
@@ -130,23 +169,40 @@ export class BadgeOBJExporter {
     
     // 正面顶点和UV（双面和单面都需要）
     points.forEach(point => {
-      vertices.push(this.addVertex(point.x, point.y, thickness / 2));
+      const vertexIndex = this.addVertex(point.x, point.y, thickness / 2);
+      vertices.push(vertexIndex);
       const u = (point.x + width / 2) / width;
       const v = (point.y + height / 2) / height;
-      uvs.push(this.addUV(u, v));
+      const uvIndex = this.addUV(u, v);
+      uvs.push(uvIndex);
+      if (this.for3DPrinting) {
+        this.updateVertexColor(vertexIndex, u, v);
+      }
     });
     
     // 背面顶点
     points.forEach(point => {
-      vertices.push(this.addVertex(point.x, point.y, -thickness / 2));
+      const vertexIndex = this.addVertex(point.x, point.y, -thickness / 2);
+      vertices.push(vertexIndex);
+
       if (doubleSided) {
         // 双面模型：背面也有UV贴图（镜像）
         const u = 1.0 - (point.x + width / 2) / width; // 镜像U坐标
         const v = (point.y + height / 2) / height;
-        uvs.push(this.addUV(u, v));
+        const uvIndex = this.addUV(u, v);
+        uvs.push(uvIndex);
+        if (this.for3DPrinting) {
+          this.updateVertexColor(vertexIndex, u, v);
+        }
       } else {
         // 单面模型：背面使用白色UV坐标（固定在贴图的白色区域）
-        uvs.push(this.addUV(0.0, 0.0)); // 贴图左下角，通常是白色背景
+        const u = 0.0;
+        const v = 0.0;
+        const uvIndex = this.addUV(u, v);
+        uvs.push(uvIndex);
+        if (this.for3DPrinting) {
+          this.updateVertexColor(vertexIndex, u, v); // 使用白色
+        }
       }
     });
     
@@ -199,13 +255,12 @@ export class BadgeOBJExporter {
     const { width, height } = badgeSettings;
     const z = isFront ? thickness / 2 : -thickness / 2;
     
-    // 根据重拓扑设置动态调整网格密度
-    const retopologyDensity = this.meshQuality.enableRetopology ? 
-      this.getRetopologyDensityValue().density : this.meshDensity.density;
+    // 直接使用用户设置的网格密度
+    const gridDensity = this.meshDensity.density;
     const meshVertices = [];
     const meshUVs = [];
-    const gridWidth = retopologyDensity;
-    const gridHeight = retopologyDensity;
+    const gridWidth = gridDensity;
+    const gridHeight = gridDensity;
     
     // 生成密集的重拓扑网格
     for (let j = 0; j <= gridHeight; j++) {
@@ -229,6 +284,11 @@ export class BadgeOBJExporter {
           const uvU = isFront ? u : (1.0 - u);
           const uvV = v;
           const uvIndex = this.addUV(uvU, uvV);
+
+          if (this.for3DPrinting) {
+            this.updateVertexColor(vertexIndex, uvU, uvV);
+          }
+
           meshVertices.push({ 
             index: vertexIndex, 
             x, 
@@ -1030,27 +1090,42 @@ export class BadgeOBJExporter {
 
   // 生成OBJ文件内容
   generateOBJContent(badgeSettings, imageSettings, textSettings, exportSettings) {
-    const faceCount = this.faces.length;
-    const vertexCount = this.vertices.length;
-    const retopologyInfo = this.meshQuality.enableRetopology ? 
-      `重拓扑密度: ${this.meshQuality.retopologyDensity} (${this.getRetopologyDensityValue().density}x${this.getRetopologyDensityValue().density})` :
-      `传统网格: ${this.meshDensity.density}x${this.meshDensity.density}`;
-    
-    let obj = `# 水密工牌 OBJ 模型 - 重拓扑优化版本\n# 尺寸: ${badgeSettings.width}mm x ${badgeSettings.height}mm x ${exportSettings.thickness}mm\n# ${retopologyInfo}\n# 顶点数: ${vertexCount}, 面数: ${faceCount}\n# 生成时间: ${new Date().toLocaleString('zh-CN')}\n# 特性: 水密结构，密集重拓扑网格，正方形划分，便于顶点颜色映射\n# 优化: 四边形对角线分割，高质量三角面，适合后续操作\n\n`;
-    
-    obj += '# 顶点坐标\n';
-    this.vertices.forEach(v => obj += `v ${v.x.toFixed(6)} ${v.y.toFixed(6)} ${v.z.toFixed(6)}\n`);
-    
-    obj += '\n# UV坐标\n';
-    this.uvs.forEach(uv => obj += `vt ${uv.u.toFixed(6)} ${uv.v.toFixed(6)}\n`);
-    
-    obj += '\nmtllib badge.mtl\nusemtl badge_material\n\n# 面定义\n';
-    this.faces.forEach(face => obj += `f ${face.vertices[0]}/${face.uvs[0]} ${face.vertices[1]}/${face.uvs[1]} ${face.vertices[2]}/${face.uvs[2]}\n`);
-    
+    let obj = '';
+    if (!this.for3DPrinting) {
+      obj += 'mtllib badge.mtl\n';
+    }
+
+    // 顶点数据
+    this.vertices.forEach(v => {
+      if (this.for3DPrinting && v.color) {
+        obj += `v ${v.x.toFixed(4)} ${v.y.toFixed(4)} ${v.z.toFixed(4)} ${v.color.r.toFixed(4)} ${v.color.g.toFixed(4)} ${v.color.b.toFixed(4)}\n`;
+      } else {
+        obj += `v ${v.x.toFixed(4)} ${v.y.toFixed(4)} ${v.z.toFixed(4)}\n`;
+      }
+    });
+
+    if (!this.for3DPrinting) {
+      // UV数据
+      this.uvs.forEach(uv => {
+        obj += `vt ${uv.u.toFixed(4)} ${uv.v.toFixed(4)}\n`;
+      });
+
+      obj += 'usemtl badge_material\n';
+    }
+
+    // 面数据
+    this.faces.forEach(face => {
+      if (this.for3DPrinting) {
+        obj += `f ${face.vertices[0]} ${face.vertices[1]} ${face.vertices[2]}\n`;
+      } else {
+        obj += `f ${face.vertices[0]}/${face.uvs[0]} ${face.vertices[1]}/${face.uvs[1]} ${face.vertices[2]}/${face.uvs[2]}\n`;
+      }
+    });
+
     return obj;
   }
 
-  // 生成MTL材质文件
+  // 生成MTL文件内容
   generateMTLContent() {
     return `# 工牌材质文件 - 重拓扑优化版本\n# 生成时间: ${new Date().toLocaleString('zh-CN')}\n# 优化特性: 重拓扑密集网格，正方形划分，便于顶点颜色映射\nnewmtl badge_material\nKa 0.2 0.2 0.2\nKd 0.8 0.8 0.8\nKs 0.1 0.1 0.1\nNs 10.0\nd 1.0\nillum 2\nmap_Kd badge_texture.png\n`;
   }
@@ -1233,68 +1308,63 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
   meshQuality: { 
     enableBoundaryConnection: true, 
     maxBoundaryConnections: 3,
-    enableRetopology: true,
-    retopologyDensity: 'high'
+    enableRetopology: true
   }
-}) {
-  const exporter = new BadgeOBJExporter();
-  
+}, options = {}) { // 接受新的options参数
   try {
-    // 设置网格密度
-    if (exportSettings.meshDensity) {
-      exporter.setMeshDensity(exportSettings.meshDensity.density || 20);
+    const exporter = new BadgeOBJExporter(options); // 将options传给构造函数
+    
+    // 1. 设置网格密度和质量
+    exporter.setMeshDensity(exportSettings.meshDensity.density);
+    exporter.setMeshQuality(
+      exportSettings.meshQuality.enableBoundaryConnection !== false, 
+      exportSettings.meshQuality.maxBoundaryConnections || 3,
+      exportSettings.meshQuality.enableRetopology !== false
+    );
+    
+    if (options.for3DPrinting) {
+      exporter.textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings);
     }
     
-    // 设置网格质量
-    if (exportSettings.meshQuality) {
-      exporter.setMeshQuality(
-        exportSettings.meshQuality.enableBoundaryConnection !== false, 
-        exportSettings.meshQuality.maxBoundaryConnections || 3,
-        exportSettings.meshQuality.enableRetopology !== false,
-        exportSettings.meshQuality.retopologyDensity || 'high'
-      );
-    }
-    
+    // 2. 生成几何体 - 修正错误的函数调用
     const objContent = exporter.generateBadgeOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings);
-    const mtlContent = exporter.generateMTLContent();
-    const textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings);
     
-    // 下载文本文件的通用函数
+    await new Promise(resolve => setTimeout(resolve, 0)); // 确保UI更新
+
     const downloadFile = (content, filename, type = 'text/plain') => {
       const blob = new Blob([content], { type });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = filename;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     };
-    
-    // 下载OBJ和MTL文件
+
+    // 下载OBJ文件
     downloadFile(objContent, 'badge.obj');
-    downloadFile(mtlContent, 'badge.mtl');
     
-    // 下载贴图文件
-    textureCanvas.toBlob(blob => {
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'badge_texture.png';
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-    }, 'image/png');
-    
-    const modelType = exportSettings.doubleSided ? '双面' : '单面';
-    const retopologyInfo = exporter.meshQuality.enableRetopology ? 
-      `重拓扑${exporter.meshQuality.retopologyDensity}密度: ${exporter.getRetopologyDensityValue().density}` :
-      `传统网格: ${exporter.meshDensity.density}x${exporter.meshDensity.density}`;
-    const qualityInfo = exporter.meshQuality.enableBoundaryConnection ? 
-      `边界连接: ${exporter.meshQuality.maxBoundaryConnections}个` : '边界连接: 已禁用';
-    
-    return { 
-      success: true, 
-      message: `${modelType}工牌OBJ模型重拓扑导出成功！\n厚度: ${exportSettings.thickness}mm\n${retopologyInfo}\n${qualityInfo}\n已下载3个文件：badge.obj、badge.mtl、badge_texture.png\n✅ 模型采用重拓扑优化，正方形网格密集划分，高质量三角面\n✅ 专为顶点颜色映射优化，便于后续操作和处理` 
-    };
+    // 如果不是3D打印模式，则生成并下载MTL和纹理
+    if (!options.for3DPrinting) {
+      // 生成并下载MTL文件
+      const mtlContent = exporter.generateMTLContent();
+      downloadFile(mtlContent, 'badge.mtl');
+
+      // 生成并下载纹理图片
+      const textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings);
+      textureCanvas.toBlob(blob => {
+        if (blob) {
+          downloadFile(blob, 'badge_texture.png', 'image/png');
+        }
+      }, 'image/png');
+    }
+
+    return { success: true, message: '模型已成功导出！' };
   } catch (error) {
-    return { success: false, message: '导出失败：' + error.message };
+    console.error("导出OBJ时发生严重错误: ", error);
+    return { success: false, message: '导出失败: ' + error.message };
   }
 } 
 

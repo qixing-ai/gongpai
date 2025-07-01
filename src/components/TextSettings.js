@@ -136,12 +136,12 @@ const TextSettings = ({
           </div>
           
           <div>
-            <Text>网格密度: {exportSettings.meshDensity?.density || 20}</Text>
+            <Text>网格密度: {exportSettings.meshDensity?.density || 200}</Text>
             <Slider
-              min={10}
-              max={1000}
+              min={100}
+              max={500}
               step={5}
-              value={exportSettings.meshDensity?.density || 20}
+              value={exportSettings.meshDensity?.density || 200}
               onChange={(value) => setExportSettings(prev => ({
                 ...prev,
                 meshDensity: { density: value }
@@ -151,46 +151,6 @@ const TextSettings = ({
             <Text style={{ fontSize: '11px', color: '#666' }}>
               密度越高，三角面越密集。超高密度(&gt;200)会显著增加文件大小和处理时间
             </Text>
-          </div>
-          
-          <div>
-            <Text>网格质量</Text>
-            <div style={{ marginTop: 4 }}>
-              <div style={{ marginBottom: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={exportSettings.meshQuality?.enableBoundaryConnection !== false}
-                  onChange={(e) => setExportSettings(prev => ({ 
-                    ...prev, 
-                    meshQuality: { 
-                      ...prev.meshQuality, 
-                      enableBoundaryConnection: e.target.checked 
-                    }
-                  }))}
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={{ fontSize: '12px' }}>启用边界连接</Text>
-              </div>
-              {exportSettings.meshQuality?.enableBoundaryConnection !== false && (
-                <div>
-                  <Text style={{ fontSize: '12px' }}>最大连接数: {exportSettings.meshQuality?.maxBoundaryConnections || 3}</Text>
-                  <Slider
-                    min={1}
-                    max={8}
-                    step={1}
-                    value={exportSettings.meshQuality?.maxBoundaryConnections || 3}
-                    onChange={(value) => setExportSettings(prev => ({ 
-                      ...prev, 
-                      meshQuality: { ...prev.meshQuality, maxBoundaryConnections: value }
-                    }))}
-                    size="small"
-                  />
-                  <Text style={{ fontSize: '11px', color: '#666' }}>
-                    连接数越少，背面越干净，但可能影响水密性
-                  </Text>
-                </div>
-              )}
-            </div>
           </div>
         </Space>
       </Card>

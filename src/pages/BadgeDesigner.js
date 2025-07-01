@@ -12,6 +12,7 @@ import {
   DownloadOutlined,
   ReloadOutlined,
   CameraOutlined,
+  PrinterOutlined,
 } from '@ant-design/icons';
 import { BadgePreview, BadgeSettings, TextSettings } from '../components';
 import useInteraction from '../hooks/useInteraction';
@@ -72,11 +73,12 @@ const BadgeDesigner = () => {
     doubleSided: true,    // 双面/单面
     thickness: 2.0,       // 厚度 mm
     meshDensity: {        // 网格密度设置
-      density: 20         // 正方形网格分段数
+      density: 200         // 正方形网格分段数
     },
     meshQuality: {        // 网格质量设置
       enableBoundaryConnection: true,  // 是否启用边界连接
-      maxBoundaryConnections: 3        // 最大边界连接数
+      maxBoundaryConnections: 3,        // 最大边界连接数
+      enableRetopology: true          // 是否启用重拓扑优化
     }
   });
 
@@ -100,9 +102,12 @@ const BadgeDesigner = () => {
   );
 
   // 导出工牌为OBJ模型
-  const exportBadge = async () => {
+  const exportBadge = async (for3DPrinting = false) => {
     try {
-      message.loading('正在生成OBJ模型...', 0);
+      const loadingMessage = for3DPrinting 
+        ? '正在生成用于3D打印的OBJ模型...' 
+        : '正在生成OBJ模型...';
+      message.loading(loadingMessage, 0);
       
       const { exportBadgeAsOBJ } = await import('../utils/objExporter');
       
@@ -111,7 +116,8 @@ const BadgeDesigner = () => {
         holeSettings, 
         imageSettings, 
         textSettings,
-        exportSettings
+        exportSettings,
+        { for3DPrinting }
       );
       
       message.destroy(); // 清除loading消息
@@ -166,11 +172,12 @@ const BadgeDesigner = () => {
       doubleSided: true,
       thickness: formatSize(2.0, 1),
       meshDensity: {
-        density: 20
+        density: 200
       },
       meshQuality: {
         enableBoundaryConnection: true,
-        maxBoundaryConnections: 3
+        maxBoundaryConnections: 3,
+        enableRetopology: true
       }
     });
     setSelectedElement(null);
@@ -195,8 +202,11 @@ const BadgeDesigner = () => {
             <Button icon={<ReloadOutlined />} onClick={resetDesign} size="small">
               重置
             </Button>
-            <Button type="primary" icon={<DownloadOutlined />} onClick={exportBadge} size="small">
+            <Button type="default" icon={<DownloadOutlined />} onClick={() => exportBadge(false)} size="small">
               导出OBJ模型
+            </Button>
+            <Button type="primary" icon={<PrinterOutlined />} onClick={() => exportBadge(true)} size="small">
+              导出3D打印模型
             </Button>
           </Space>
         </div>
