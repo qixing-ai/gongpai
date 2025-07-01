@@ -17,7 +17,7 @@ export const UNIT_CONFIG = {
     SIZE: { min: 3, max: 15, step: 0.5 },
     WIDTH: { min: 3, max: 20, step: 0.5 },
     HEIGHT: { min: 2, max: 15, step: 0.5 },
-    OFFSET_Y: { min: 1, max: 20, step: 0.5 },
+    OFFSET_Y: { min: 1.5, max: 20, step: 0.5 },
     BORDER_RADIUS: { min: 0, max: 10, step: 0.5 }
   },
   IMAGE: {

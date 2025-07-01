@@ -40,7 +40,7 @@ const BadgeDesigner = () => {
     enabled: false,
     shape: 'circle',
     size: 6,          // mm
-    offsetY: 1,       // mm
+    offsetY: 1.5,       // mm
     width: 6,         // mm
     height: 4,        // mm
     borderRadius: 2,  // mm
