@@ -245,8 +245,7 @@ export class BadgeOBJExporter {
     
     // 直接使用用户设置的网格密度
     const gridDensity = this.meshDensity.density;
-    const meshVertices = [];
-    const meshUVs = [];
+    const meshNodes = [];
     const gridWidth = gridDensity;
     const gridHeight = gridDensity;
     
@@ -278,20 +277,17 @@ export class BadgeOBJExporter {
             this.updateVertexColor(vertexIndex, uvU, uvV);
           }
 
-          meshVertices.push({ 
+          meshNodes.push({ 
             index: vertexIndex, 
+            uvIndex,
             x, 
             y, 
             gridX: i, 
             gridY: j,
-            u: uvU,
-            v: uvV,
             isHoleBoundary: false
           });
-          meshUVs.push(uvIndex);
         } else {
-          meshVertices.push(null);
-          meshUVs.push(null);
+          meshNodes.push(null);
         }
       }
     }
@@ -311,40 +307,33 @@ export class BadgeOBJExporter {
           const uvIndex = this.addUV(uvU, uvV);
           
           // 将孔洞边界点添加到主面网格中
-          meshVertices.push({
+          meshNodes.push({
             index: vIdx,
+            uvIndex,
             x: vertex.x,
             y: vertex.y,
             gridX: null, // 孔洞边界点不属于规则网格
             gridY: null,
-            u: uvU,
-            v: uvV,
             isHoleBoundary: true // 标记为孔洞边界点
           });
-          meshUVs.push(uvIndex);
         }
       });
     }
     
-    return { meshVertices, meshUVs, gridWidth, gridHeight };
+    return { meshNodes, gridWidth, gridHeight };
   }
 
   // 生成重拓扑三角面 - 优化的四边形分割算法
-  generateRetopologyTriangles(meshVertices, meshUVs, gridWidth, gridHeight, isFront) {
+  generateRetopologyTriangles(meshNodes, gridWidth, gridHeight, isFront) {
     let triangleCount = 0;
     
     for (let j = 0; j < gridHeight; j++) {
       for (let i = 0; i < gridWidth; i++) {
         const idx = j * (gridWidth + 1) + i;
-        const v1 = meshVertices[idx];              // 左下
-        const v2 = meshVertices[idx + 1];          // 右下
-        const v3 = meshVertices[idx + gridWidth + 1];     // 左上
-        const v4 = meshVertices[idx + gridWidth + 2];     // 右上
-        
-        const uv1 = meshUVs[idx];
-        const uv2 = meshUVs[idx + 1];
-        const uv3 = meshUVs[idx + gridWidth + 1];
-        const uv4 = meshUVs[idx + gridWidth + 2];
+        const v1 = meshNodes[idx];              // 左下
+        const v2 = meshNodes[idx + 1];          // 右下
+        const v3 = meshNodes[idx + gridWidth + 1];     // 左上
+        const v4 = meshNodes[idx + gridWidth + 2];     // 右上
         
         // 只有当四个顶点都存在时才生成三角形
         if (v1 && v2 && v3 && v4) {
@@ -356,160 +345,42 @@ export class BadgeOBJExporter {
           if (diag1 <= diag2) {
             // 使用v1-v4对角线分割
             if (isFront) {
-              this.addFace(v1.index, v2.index, v4.index, uv1, uv2, uv4);
-              this.addFace(v1.index, v4.index, v3.index, uv1, uv4, uv3);
+              this.addFace(v1.index, v2.index, v4.index, v1.uvIndex, v2.uvIndex, v4.uvIndex);
+              this.addFace(v1.index, v4.index, v3.index, v1.uvIndex, v4.uvIndex, v3.uvIndex);
             } else {
-              this.addFace(v1.index, v4.index, v2.index, uv1, uv4, uv2);
-              this.addFace(v1.index, v3.index, v4.index, uv1, uv3, uv4);
+              this.addFace(v1.index, v4.index, v2.index, v1.uvIndex, v4.uvIndex, v2.uvIndex);
+              this.addFace(v1.index, v3.index, v4.index, v1.uvIndex, v3.uvIndex, v4.uvIndex);
             }
           } else {
             // 使用v2-v3对角线分割
             if (isFront) {
-              this.addFace(v1.index, v2.index, v3.index, uv1, uv2, uv3);
-              this.addFace(v2.index, v4.index, v3.index, uv2, uv4, uv3);
+              this.addFace(v1.index, v2.index, v3.index, v1.uvIndex, v2.uvIndex, v3.uvIndex);
+              this.addFace(v2.index, v4.index, v3.index, v2.uvIndex, v4.uvIndex, v3.uvIndex);
             } else {
-              this.addFace(v1.index, v3.index, v2.index, uv1, uv3, uv2);
-              this.addFace(v2.index, v3.index, v4.index, uv2, uv3, uv4);
+              this.addFace(v1.index, v3.index, v2.index, v1.uvIndex, v3.uvIndex, v2.uvIndex);
+              this.addFace(v2.index, v3.index, v4.index, v2.uvIndex, v3.uvIndex, v4.uvIndex);
             }
           }
           triangleCount += 2;
         } else if (v1 && v2 && v3) {
           // 处理边界不完整的三角形
           if (isFront) {
-            this.addFace(v1.index, v2.index, v3.index, uv1, uv2, uv3);
+            this.addFace(v1.index, v2.index, v3.index, v1.uvIndex, v2.uvIndex, v3.uvIndex);
           } else {
-            this.addFace(v1.index, v3.index, v2.index, uv1, uv3, uv2);
+            this.addFace(v1.index, v3.index, v2.index, v1.uvIndex, v3.uvIndex, v2.uvIndex);
           }
           triangleCount += 1;
         } else if (v2 && v3 && v4) {
           // 处理边界不完整的三角形
           if (isFront) {
-            this.addFace(v2.index, v4.index, v3.index, uv2, uv4, uv3);
+            this.addFace(v2.index, v4.index, v3.index, v2.uvIndex, v4.uvIndex, v3.uvIndex);
           } else {
-            this.addFace(v2.index, v3.index, v4.index, uv2, uv3, uv4);
+            this.addFace(v2.index, v3.index, v4.index, v2.uvIndex, v3.uvIndex, v4.uvIndex);
           }
           triangleCount += 1;
         }
       }
     }
-    
-    return triangleCount;
-  }
-
-  // 生成孔洞边界三角形 - 复用圆角修复算法
-  generateHoleBoundaryTriangles(meshVertices, meshUVs, holeBoundaryVertices, regularMeshVertices, isFront, spatialGrid) {
-    if (holeBoundaryVertices.length === 0 || regularMeshVertices.length === 0) {
-      return 0;
-    }
-    
-    // 直接使用改进的圆弧边界连接算法
-    return this.generateCircularBoundaryConnections(meshVertices, meshUVs, holeBoundaryVertices, regularMeshVertices, isFront, true, spatialGrid);
-  }
-
-  // 通用的圆弧边界连接算法 - 适用于孔洞和工牌圆角
-  generateCircularBoundaryConnections(meshVertices, meshUVs, boundaryVertices, regularMeshVertices, isFront, isHole = false, spatialGrid) {
-    let triangleCount = 0;
-    
-    // 为每个边界点找到最近的规则网格点并创建连接
-    boundaryVertices.forEach((boundaryVertex, boundaryIndex) => {
-      // 找到最近的几个规则网格点
-      let nearbyVertices;
-      const numToSlice = isHole ? 4 : 3;
-
-      // 优化：如果提供了空间网格，则使用它来加速搜索
-      if (spatialGrid) {
-        const searchCandidates = this._queryNearbyVertices(spatialGrid, boundaryVertex.x, boundaryVertex.y, 2);
-        nearbyVertices = searchCandidates
-          .map(mv => ({
-            ...mv,
-            distanceSq: (mv.x - boundaryVertex.x) ** 2 + (mv.y - boundaryVertex.y) ** 2
-          }))
-          .sort((a, b) => a.distanceSq - b.distanceSq)
-          .slice(0, numToSlice);
-      } else {
-        // 降级到旧的慢速算法（以防万一）
-        if (isHole) {
-          nearbyVertices = regularMeshVertices
-            .filter(mv => !mv.isHoleBoundary)
-            .map(mv => ({
-              ...mv,
-              distanceSq: (mv.x - boundaryVertex.x) ** 2 + (mv.y - boundaryVertex.y) ** 2
-            }))
-            .sort((a, b) => a.distanceSq - b.distanceSq)
-            .slice(0, numToSlice); 
-        } else {
-          nearbyVertices = regularMeshVertices
-            .map(mv => ({
-              ...mv,
-              distanceSq: (mv.x - boundaryVertex.x) ** 2 + (mv.y - boundaryVertex.y) ** 2
-            }))
-            .sort((a, b) => a.distanceSq - b.distanceSq)
-            .slice(0, numToSlice);
-        }
-      }
-      
-      // 获取当前边界点的UV
-      let boundaryUV = null;
-      for (let k = 0; k < meshVertices.length; k++) {
-        if (meshVertices[k] && meshVertices[k].index === boundaryVertex.index) {
-          boundaryUV = meshUVs[k];
-          break;
-        }
-      }
-      
-      // 为每对相邻的网格点创建三角形
-      for (let j = 0; j < nearbyVertices.length - 1; j++) {
-        const mv1 = nearbyVertices[j];
-        const mv2 = nearbyVertices[j + 1];
-        
-        // 获取网格点的UV
-        let muv1 = null, muv2 = null;
-        for (let k = 0; k < meshVertices.length; k++) {
-          if (meshVertices[k]) {
-            if (meshVertices[k].index === mv1.index) {
-              muv1 = meshUVs[k];
-            }
-            if (meshVertices[k].index === mv2.index) {
-              muv2 = meshUVs[k];
-            }
-          }
-        }
-        
-        if (boundaryUV && muv1 && muv2) {
-          // 检查三角形是否有效（避免重复顶点和过于细长的三角形）
-          if (boundaryVertex.index !== mv1.index && boundaryVertex.index !== mv2.index && mv1.index !== mv2.index) {
-            // 检查三角形质量
-            const side1 = Math.sqrt((boundaryVertex.x - mv1.x) ** 2 + (boundaryVertex.y - mv1.y) ** 2);
-            const side2 = Math.sqrt((mv1.x - mv2.x) ** 2 + (mv1.y - mv2.y) ** 2);
-            const side3 = Math.sqrt((mv2.x - boundaryVertex.x) ** 2 + (mv2.y - boundaryVertex.y) ** 2);
-            
-            const maxSide = Math.max(side1, side2, side3);
-            const minSide = Math.min(side1, side2, side3);
-            const aspectRatio = maxSide / minSide;
-            
-            // 只生成质量较好的三角形
-            if (aspectRatio < 8.0) {
-              if (isHole) {
-                // 孔洞边界：特殊顶点顺序
-                this.addFaceWithNormalCheck(
-                  boundaryVertex.index, mv2.index, mv1.index, 
-                  boundaryUV, muv2, muv1, 
-                  isFront
-                );
-              } else {
-                // 外边界：正常顶点顺序
-                this.addFaceWithNormalCheck(
-                  boundaryVertex.index, mv1.index, mv2.index, 
-                  boundaryUV, muv1, muv2, 
-                  isFront
-                );
-              }
-              triangleCount++;
-            }
-          }
-        }
-      }
-    });
     
     return triangleCount;
   }
@@ -556,23 +427,23 @@ export class BadgeOBJExporter {
     const hasHole = !!innerVertices;
 
     // 总是使用重拓扑算法
-    const { meshVertices, meshUVs, gridWidth, gridHeight } = this.createRetopologyMeshVertices(
+    const { meshNodes, gridWidth, gridHeight } = this.createRetopologyMeshVertices(
       outerVertices, isFront, badgeSettings, thickness, innerVertices, holeParams, holeType
     );
     
-    this.generateRetopologyTriangles(meshVertices, meshUVs, gridWidth, gridHeight, isFront);
+    this.generateRetopologyTriangles(meshNodes, gridWidth, gridHeight, isFront);
     
     if (this.meshQuality.enableBoundaryConnection) {
-      this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, outerVertices, outerUVs, isFront, false, badgeSettings);
+      this.createRetopologyBoundaryConnection(meshNodes, gridWidth, gridHeight, outerVertices, outerUVs, isFront, false, badgeSettings);
       if (hasHole) {
-        this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, innerVertices, innerUVs, isFront, true, badgeSettings);
+        this.createRetopologyBoundaryConnection(meshNodes, gridWidth, gridHeight, innerVertices, innerUVs, isFront, true, badgeSettings);
       }
     }
   }
 
   // 重拓扑专用的边界连接算法 - 优化边界到网格的连接
-  createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, boundaryVertices, boundaryUVs, isFront, isHole = false, badgeSettings = { width: 100, height: 100 }) {
-    const validMeshVertices = meshVertices.filter(v => v !== null);
+  createRetopologyBoundaryConnection(meshNodes, gridWidth, gridHeight, boundaryVertices, boundaryUVs, isFront, isHole = false, badgeSettings = { width: 100, height: 100 }) {
+    const validMeshVertices = meshNodes.filter(v => v !== null);
     if (validMeshVertices.length === 0) return;
     
     // 获取边界顶点的实际坐标
@@ -614,18 +485,10 @@ export class BadgeOBJExporter {
             
             if (nearbyMeshVertices.length > 0) {
               const nearbyVertex = nearbyMeshVertices[0];
-              // 找到nearbyVertex在meshVertices中的实际索引
-              let nearbyUVIndex = null;
-              for (let k = 0; k < meshVertices.length; k++) {
-                if (meshVertices[k] && meshVertices[k].index === nearbyVertex.index) {
-                  nearbyUVIndex = meshUVs[k];
-                  break;
-                }
-              }
               
-              if (nearbyUVIndex) {
+              if (nearbyVertex.uvIndex) {
                 // 生成连接三角形，确保法线方向正确
-                this.addFaceWithNormalCheck(bv1, bv2, nearbyVertex.index, buv1, buv2, nearbyUVIndex, isFront);
+                this.addFaceWithNormalCheck(bv1, bv2, nearbyVertex.index, buv1, buv2, nearbyVertex.uvIndex, isFront);
                 connectionCount++;
               }
             }
@@ -668,13 +531,10 @@ export class BadgeOBJExporter {
           const mv1 = currentConnections[0];
           const mv2 = nextConnections[0];
           
-          const muv1 = meshUVs[mv1.gridY * (gridWidth + 1) + mv1.gridX];
-          const muv2 = meshUVs[mv2.gridY * (gridWidth + 1) + mv2.gridX];
-          
-          if (muv1 && muv2) {
+          if (mv1.uvIndex && mv2.uvIndex) {
             // 外边界：正常顶点顺序
-            this.addFaceWithNormalCheck(bv1, mv1.index, bv2, buv1, muv1, buv2, isFront);
-            this.addFaceWithNormalCheck(mv1.index, mv2.index, bv2, muv1, muv2, buv2, isFront);
+            this.addFaceWithNormalCheck(bv1, mv1.index, bv2, buv1, mv1.uvIndex, buv2, isFront);
+            this.addFaceWithNormalCheck(mv1.index, mv2.index, bv2, mv1.uvIndex, mv2.uvIndex, buv2, isFront);
             connectionCount += 2;
           }
         }
@@ -959,7 +819,7 @@ export class BadgeOBJExporter {
   // 生成贴图
   async generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings) {
     const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     
     // 直接按照工牌的宽高比例设置画布尺寸，确保1:1对应
     const maxResolution = 1024;
