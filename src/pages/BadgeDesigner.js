@@ -105,42 +105,42 @@ const BadgeDesigner = () => {
   const [loading, setLoading] = useState(false);
 
   // 导出工牌为OBJ模型
-  const exportBadge = async (for3DPrinting = false) => {
-    console.log('Loading state before export:', loading);
+  const exportBadge = (for3DPrinting = false) => {
     setLoading(true);
-    console.log('Loading state after setting to true:', loading);
-    try {
-      const loadingMessage = for3DPrinting 
-        ? '正在生成用于3D打印的OBJ模型...' 
-        : '正在生成OBJ模型...';
-      message.loading(loadingMessage, 0);
-      
-      const { exportBadgeAsOBJ } = await import('../utils/objExporter');
-      
-      const result = await exportBadgeAsOBJ(
-        badgeSettings, 
-        holeSettings, 
-        imageSettings, 
-        textSettings,
-        exportSettings,
-        { for3DPrinting }
-      );
-      
-      message.destroy(); // 清除loading消息
-      
-      if (result.success) {
-        message.success(result.message, 5);
-      } else {
-        message.error(result.message);
+    
+    setTimeout(async () => {
+      try {
+        const loadingMessage = for3DPrinting 
+          ? '正在生成用于3D打印的OBJ模型...' 
+          : '正在生成OBJ模型...';
+        message.loading(loadingMessage, 0);
+        
+        const { exportBadgeAsOBJ } = await import('../utils/objExporter');
+        
+        const result = await exportBadgeAsOBJ(
+          badgeSettings, 
+          holeSettings, 
+          imageSettings, 
+          textSettings,
+          exportSettings,
+          { for3DPrinting }
+        );
+        
+        message.destroy(); // 清除loading消息
+        
+        if (result.success) {
+          message.success(result.message, 5);
+        } else {
+          message.error(result.message);
+        }
+      } catch (error) {
+        message.destroy();
+        message.error('导出失败：' + error.message);
+        console.error('导出错误:', error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      message.destroy();
-      message.error('导出失败：' + error.message);
-      console.error('导出错误:', error);
-    } finally {
-      setLoading(false);
-      console.log('Loading state after setting to false:', loading);
-    }
+    }, 0);
   };
 
   // 重置设计
