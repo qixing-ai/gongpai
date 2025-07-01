@@ -104,54 +104,50 @@ const BadgeDesigner = () => {
 
   const [loading, setLoading] = useState(false);
 
-  // 导出工牌为OBJ模型
+    // 导出工牌为OBJ模型
   const exportBadge = (for3DPrinting = false) => {
-    // 如果已经在加载中，直接返回
+    // 防止重复点击
     if (loading) {
       return;
     }
     
     setLoading(true);
     
-    // 使用 requestAnimationFrame 确保 UI 更新
-    requestAnimationFrame(() => {
-      setTimeout(async () => {
-        try {
-          const loadingMessage = for3DPrinting 
-            ? '正在生成用于3D打印的OBJ模型...' 
-            : '正在生成OBJ模型...';
-          message.loading(loadingMessage, 0);
-          
-          const { exportBadgeAsOBJ } = await import('../utils/objExporter');
-          
-          const result = await exportBadgeAsOBJ(
-            badgeSettings, 
-            holeSettings, 
-            imageSettings, 
-            textSettings,
-            exportSettings,
-            { for3DPrinting }
-          );
-          
-          message.destroy(); // 清除loading消息
-          
-          if (result.success) {
-            message.success(result.message, 5);
-          } else {
-            message.error(result.message);
-          }
-        } catch (error) {
-          message.destroy();
-          message.error('导出失败：' + error.message);
-          console.error('导出错误:', error);
-        } finally {
-          // 确保加载状态被重置
-          setTimeout(() => {
-            setLoading(false);
-          }, 100);
+    // 使用 setTimeout 确保 UI 有时间更新加载状态
+    setTimeout(async () => {
+      try {
+        const loadingMessage = for3DPrinting 
+          ? '正在生成用于3D打印的OBJ模型...' 
+          : '正在生成OBJ模型...';
+        message.loading(loadingMessage, 0);
+        
+        const { exportBadgeAsOBJ } = await import('../utils/objExporter');
+        
+        const result = await exportBadgeAsOBJ(
+          badgeSettings, 
+          holeSettings, 
+          imageSettings, 
+          textSettings,
+          exportSettings,
+          { for3DPrinting }
+        );
+        
+        message.destroy(); // 清除loading消息
+        
+        if (result.success) {
+          message.success(result.message, 5);
+        } else {
+          message.error(result.message);
         }
-      }, 50);
-    });
+      } catch (error) {
+        message.destroy();
+        message.error('导出失败：' + error.message);
+        console.error('导出错误:', error);
+      } finally {
+        // 确保加载状态被正确重置
+        setLoading(false);
+      }
+    }, 100); // 增加延迟时间，确保UI更新
   };
 
   // 重置设计
@@ -222,10 +218,24 @@ const BadgeDesigner = () => {
             <Button icon={<ReloadOutlined />} onClick={resetDesign} size="small">
               重置
             </Button>
-            <Button type="default" icon={<DownloadOutlined />} onClick={() => exportBadge(false)} size="small">
+            <Button 
+              type="default" 
+              icon={<DownloadOutlined />} 
+              onClick={() => exportBadge(false)} 
+              size="small"
+              loading={loading}
+              disabled={loading}
+            >
               导出OBJ模型
             </Button>
-            <Button type="primary" icon={<PrinterOutlined />} onClick={() => exportBadge(true)} size="small">
+            <Button 
+              type="primary" 
+              icon={<PrinterOutlined />} 
+              onClick={() => exportBadge(true)} 
+              size="small"
+              loading={loading}
+              disabled={loading}
+            >
               导出3D打印模型
             </Button>
           </Space>
