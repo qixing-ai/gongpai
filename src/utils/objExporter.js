@@ -10,16 +10,14 @@ export class BadgeOBJExporter {
     this.for3DPrinting = options.for3DPrinting || false;
     this.textureCanvas = options.textureCanvas || null; // 传入纹理画布
     if (this.for3DPrinting && !this.textureCanvas) {
-      console.warn('3D打印模式需要一个有效的纹理画布来提取顶点颜色。');
+      // console.warn('3D打印模式需要一个有效的纹理画布来提取顶点颜色。');
     }
 
     // 网格划分密度设置 - 只用一个参数 density
     this.meshDensity = { density: 20 }; // 默认值
-    // 网格质量设置
     this.meshQuality = { 
       enableBoundaryConnection: true,  // 是否启用边界连接
       maxBoundaryConnections: 3,       // 最大边界连接数
-      enableRetopology: true          // 是否启用重拓扑优化
     };
   }
 
@@ -29,11 +27,10 @@ export class BadgeOBJExporter {
   }
 
   // 设置网格质量
-  setMeshQuality(enableBoundaryConnection = true, maxBoundaryConnections = 3, enableRetopology = true) {
+  setMeshQuality(enableBoundaryConnection = true, maxBoundaryConnections = 3) {
     this.meshQuality = { 
       enableBoundaryConnection, 
       maxBoundaryConnections,
-      enableRetopology
     };
   }
 
@@ -88,7 +85,7 @@ export class BadgeOBJExporter {
     if (v1 !== v2 && v2 !== v3 && v1 !== v3) {
       this.faces.push({ vertices: [v1, v2, v3], uvs: [uv1, uv2, uv3] });
     } else {
-      console.warn('跳过退化三角形：重复顶点索引', { v1, v2, v3 });
+      // console.warn('跳过退化三角形：重复顶点索引', { v1, v2, v3 });
     }
   }
 
@@ -241,19 +238,6 @@ export class BadgeOBJExporter {
     }
   }
 
-  // 获取重拓扑密度数值
-  getRetopologyDensityValue() {
-    const densityMap = {
-      'low': { width: 20, height: 20 },
-      'medium': { width: 40, height: 40 },
-      'high': { width: 60, height: 60 },
-      'ultra': { width: 80, height: 80 }
-    };
-    const d = densityMap[this.meshQuality.retopologyDensity] || densityMap['high'];
-    // 只用一个参数，取 width 作为正方形网格密度
-    return { density: d.width };
-  }
-
   // 创建重拓扑网格顶点 - 专门用于高密度网格生成
   createRetopologyMeshVertices(boundaryVertices, isFront, badgeSettings, thickness, holeVertices = null, holeParams = null, holeType = null) {
     const { width, height } = badgeSettings;
@@ -314,8 +298,6 @@ export class BadgeOBJExporter {
     
     // 如果有孔洞边界点，将它们也加入到主面网格中
     if (holeVertices && holeVertices.length > 0) {
-      console.log(`正在将${holeVertices.length}个孔洞边界点集成到主面网格...`);
-      
       holeVertices.forEach((vIdx, i) => {
         const vertex = this.vertices[vIdx - 1];
         if (vertex) {
@@ -342,8 +324,6 @@ export class BadgeOBJExporter {
           meshUVs.push(uvIndex);
         }
       });
-      
-      console.log(`孔洞边界点集成完成，主面网格总顶点数: ${meshVertices.filter(v => v !== null).length}`);
     }
     
     return { meshVertices, meshUVs, gridWidth, gridHeight };
@@ -421,8 +401,6 @@ export class BadgeOBJExporter {
     if (holeBoundaryVertices.length === 0 || regularMeshVertices.length === 0) {
       return 0;
     }
-    
-    console.log(`使用优化的圆弧边界连接算法处理${holeBoundaryVertices.length}个孔洞边界点...`);
     
     // 直接使用改进的圆弧边界连接算法
     return this.generateCircularBoundaryConnections(meshVertices, meshUVs, holeBoundaryVertices, regularMeshVertices, isFront, true, spatialGrid);
@@ -533,8 +511,6 @@ export class BadgeOBJExporter {
       }
     });
     
-    const boundaryType = isHole ? '孔洞' : '外边界';
-    console.log(`${boundaryType}圆弧边界连接：生成了${triangleCount}个连接三角形`);
     return triangleCount;
   }
 
@@ -542,7 +518,6 @@ export class BadgeOBJExporter {
   _createSpatialGrid(vertices, cellSize) {
     const grid = new Map();
     if (cellSize <= 0) {
-      console.warn("Invalid cellSize for spatial grid, using default.");
       cellSize = 1.0;
     }
     const invCellSize = 1 / cellSize;
@@ -580,110 +555,29 @@ export class BadgeOBJExporter {
   createMeshedFace(outerVertices, outerUVs, isFront, badgeSettings, thickness, innerVertices = null, innerUVs = null, holeParams = null, holeType = null) {
     const hasHole = !!innerVertices;
 
-    if (this.meshQuality.enableRetopology) {
-      // 使用新的重拓扑算法
-      const { meshVertices, meshUVs, gridWidth, gridHeight } = this.createRetopologyMeshVertices(
-        outerVertices, isFront, badgeSettings, thickness, innerVertices, holeParams, holeType
-      );
-      
-      const triangleCount = this.generateRetopologyTriangles(meshVertices, meshUVs, gridWidth, gridHeight, isFront);
-      
-      // 优化：预先计算顶点列表并为孔洞连接创建空间网格
-      const validMeshVertices = meshVertices.filter(v => v !== null);
-      const holeBoundaryVertices = validMeshVertices.filter(v => v.isHoleBoundary);
-      const regularMeshVertices = validMeshVertices.filter(v => !v.isHoleBoundary);
-      let holeFillTriangles = 0;
+    // 总是使用重拓扑算法
+    const { meshVertices, meshUVs, gridWidth, gridHeight } = this.createRetopologyMeshVertices(
+      outerVertices, isFront, badgeSettings, thickness, innerVertices, holeParams, holeType
+    );
+    
+    const triangleCount = this.generateRetopologyTriangles(meshVertices, meshUVs, gridWidth, gridHeight, isFront);
+    
+    // 优化：预先计算顶点列表并为孔洞连接创建空间网格
+    const validMeshVertices = meshVertices.filter(v => v !== null);
+    const holeBoundaryVertices = validMeshVertices.filter(v => v.isHoleBoundary);
+    const regularMeshVertices = validMeshVertices.filter(v => !v.isHoleBoundary);
+    let holeFillTriangles = 0;
 
-      if (hasHole && holeBoundaryVertices.length > 0 && regularMeshVertices.length > 0) {
-        const cellSize = Math.max(badgeSettings.width, badgeSettings.height) / Math.max(gridWidth, gridHeight, 1);
-        const regularMeshSpatialGrid = this._createSpatialGrid(regularMeshVertices, cellSize);
-        holeFillTriangles = this.generateHoleBoundaryTriangles(meshVertices, meshUVs, holeBoundaryVertices, regularMeshVertices, isFront, regularMeshSpatialGrid);
-      }
-      
-      if (this.meshQuality.enableBoundaryConnection) {
-        this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, outerVertices, outerUVs, isFront, false, badgeSettings);
-        if (hasHole) {
-          this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, innerVertices, innerUVs, isFront, true, badgeSettings);
-        }
-      }
-      
-      console.log(`重拓扑${hasHole ? '带孔' : ''}${isFront ? '正面' : '背面'}：生成了${triangleCount + holeFillTriangles}个三角形（主面${triangleCount}个，填补${holeFillTriangles}个），网格密度${gridWidth}x${gridHeight}`);
-    } else {
-      // 使用原始算法（保持向后兼容）
-      const { width, height } = badgeSettings;
-      const z = isFront ? thickness / 2 : -thickness / 2;
-      const density = this.meshDensity.density;
-      const meshVertices = [];
-      const meshUVs = [];
-      
-      for (let j = 0; j <= density; j++) {
-        for (let i = 0; i <= density; i++) {
-          const u = i / density;
-          const v = j / density;
-          const x = (u - 0.5) * width;
-          const y = (v - 0.5) * height;
-          
-          let isInside = this.isPointInPolygon(x, y, outerVertices);
-          if (hasHole) {
-            // 优化：使用快速的孔洞检查算法
-            isInside = isInside && !this.isPointInHole(x, y, holeParams, holeType);
-          }
-          
-          if (isInside) {
-            const vertexIndex = this.addVertex(x, y, z);
-            const uvU = isFront ? u : (1.0 - u);
-            const uvV = v;
-            const uvIndex = this.addUV(uvU, uvV);
-            meshVertices.push({ index: vertexIndex, x, y, gridX: i, gridY: j });
-            meshUVs.push(uvIndex);
-          } else {
-            meshVertices.push(null);
-            meshUVs.push(null);
-          }
-        }
-      }
-      
-      this.generateGridTriangles(meshVertices, meshUVs, density, isFront);
-      
-      if (this.meshQuality.enableBoundaryConnection) {
-        this.createSimpleBoundaryConnection(meshVertices, meshUVs, outerVertices, outerUVs, isFront, false);
-        if (hasHole) {
-          this.createSimpleBoundaryConnection(meshVertices, meshUVs, innerVertices, innerUVs, isFront, true);
-        }
-      }
+    if (hasHole && holeBoundaryVertices.length > 0 && regularMeshVertices.length > 0) {
+      const cellSize = Math.max(badgeSettings.width, badgeSettings.height) / Math.max(gridWidth, gridHeight, 1);
+      const regularMeshSpatialGrid = this._createSpatialGrid(regularMeshVertices, cellSize);
+      holeFillTriangles = this.generateHoleBoundaryTriangles(meshVertices, meshUVs, holeBoundaryVertices, regularMeshVertices, isFront, regularMeshSpatialGrid);
     }
-  }
-
-  // 为旧版网格生成三角形
-  generateGridTriangles(meshVertices, meshUVs, density, isFront) {
-    for (let j = 0; j < density; j++) {
-      for (let i = 0; i < density; i++) {
-        const idx = j * (density + 1) + i;
-        const v1 = meshVertices[idx];
-        const v2 = meshVertices[idx + 1];
-        const v3 = meshVertices[idx + density + 1];
-        const v4 = meshVertices[idx + density + 2];
-        
-        const uv1 = meshUVs[idx];
-        const uv2 = meshUVs[idx + 1];
-        const uv3 = meshUVs[idx + density + 1];
-        const uv4 = meshUVs[idx + density + 2];
-        
-        if (v1 && v2 && v3) {
-          if (isFront) {
-            this.addFace(v1.index, v2.index, v3.index, uv1, uv2, uv3);
-          } else {
-            this.addFace(v1.index, v3.index, v2.index, uv1, uv3, uv2);
-          }
-        }
-        
-        if (v2 && v3 && v4) {
-          if (isFront) {
-            this.addFace(v2.index, v4.index, v3.index, uv2, uv4, uv3);
-          } else {
-            this.addFace(v2.index, v3.index, v4.index, uv2, uv3, uv4);
-          }
-        }
+    
+    if (this.meshQuality.enableBoundaryConnection) {
+      this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, outerVertices, outerUVs, isFront, false, badgeSettings);
+      if (hasHole) {
+        this.createRetopologyBoundaryConnection(meshVertices, meshUVs, gridWidth, gridHeight, innerVertices, innerUVs, isFront, true, badgeSettings);
       }
     }
   }
@@ -705,8 +599,6 @@ export class BadgeOBJExporter {
       const holeBoundaryMeshVertices = validMeshVertices.filter(mv => mv.isHoleBoundary);
       
       if (holeBoundaryMeshVertices.length > 0) {
-        console.log(`发现${holeBoundaryMeshVertices.length}个孔洞边界点已集成到主面网格，直接使用这些点进行连接`);
-        
         // 为每个孔洞边界点找到对应的主面网格点
         let connectionCount = 0;
         for (let i = 0; i < boundaryVertices.length; i++) {
@@ -751,9 +643,6 @@ export class BadgeOBJExporter {
             }
           }
         }
-        
-        console.log(`孔洞边界连接：生成了${connectionCount}个连接三角形`);
-        return; // 直接返回，不再执行原有的连接逻辑
       }
     }
     
@@ -833,12 +722,6 @@ export class BadgeOBJExporter {
         }
       }
     }
-    
-    const boundaryType = isHole ? '孔洞边界' : '外边界';
-    console.log(`重拓扑${boundaryType}连接：生成了${connectionCount}个连接三角形`);
-
-    // 修复角落缺口的专用算法 - 冗余修复版
-    this.fixCornerGaps(meshVertices, meshUVs, gridWidth, gridHeight, boundaryVertices, boundaryUVs, isFront, isHole, badgeSettings, spatialGrid);
   }
 
   // 计算三角形的正确法线方向
@@ -895,167 +778,6 @@ export class BadgeOBJExporter {
     }
   }
 
-  // 修复角落缺口的专用算法 - 冗余修复版
-  fixCornerGaps(meshVertices, meshUVs, gridWidth, gridHeight, boundaryVertices, boundaryUVs, isFront, isHole = false, badgeSettings = { width: 100, height: 100 }, spatialGrid) {
-    const validMeshVertices = meshVertices.filter(v => v !== null);
-    if (validMeshVertices.length === 0) return;
-    
-    // 获取边界顶点的实际坐标
-    const boundaryPoints = boundaryVertices.map(v => this.vertices[v - 1]);
-    
-    // 计算边界的包围盒，用于识别角落区域
-    const minX = Math.min(...boundaryPoints.map(p => p.x));
-    const maxX = Math.max(...boundaryPoints.map(p => p.x));
-    const minY = Math.min(...boundaryPoints.map(p => p.y));
-    const maxY = Math.max(...boundaryPoints.map(p => p.y));
-    
-    // 定义角落区域的阈值（边界框的20%，孔洞更宽松）
-    const thresholdRatio = isHole ? 0.2 : 0.1;
-    const thresholdX = (maxX - minX) * thresholdRatio;
-    const thresholdY = (maxY - minY) * thresholdRatio;
-    
-    // 寻找真正的角落点（接近包围盒的角落）
-    const corners = [];
-    boundaryPoints.forEach((point, i) => {
-      const isLeftTop = (point.x - minX) <= thresholdX && (maxY - point.y) <= thresholdY;
-      const isRightTop = (maxX - point.x) <= thresholdX && (maxY - point.y) <= thresholdY;
-      const isLeftBottom = (point.x - minX) <= thresholdX && (point.y - minY) <= thresholdY;
-      const isRightBottom = (maxX - point.x) <= thresholdX && (point.y - minY) <= thresholdY;
-      
-      if (isLeftTop || isRightTop || isLeftBottom || isRightBottom) {
-        corners.push({
-          index: i,
-          point: point,
-          boundaryVertex: boundaryVertices[i],
-          boundaryUV: boundaryUVs[i],
-          position: isLeftTop ? 'leftTop' : isRightTop ? 'rightTop' : isLeftBottom ? 'leftBottom' : 'rightBottom'
-        });
-      }
-    });
-    
-    const boundaryType = isHole ? '孔洞' : '外边界';
-    console.log(`检测到${corners.length}个${boundaryType}角落需要修复:`, corners.map(c => c.position));
-    
-    let fixCount = 0;
-    // 为每个角落区域寻找合适的网格顶点并创建冗余连接
-    corners.forEach(corner => {
-      let nearbyVertices;
-      // 优化：使用传入的空间网格进行搜索
-      const searchRadius = isHole ? 4 : 2; // 孔洞的搜索范围更大
-      const searchCandidates = this._queryNearbyVertices(spatialGrid, corner.point.x, corner.point.y, searchRadius);
-
-      if (isHole) {
-        // 孔洞：寻找孔洞边界外围的网格顶点
-        // 优化：移除多余的 isPointInPolygon 检查
-        // 优化：使用距离平方避免开方
-        nearbyVertices = searchCandidates
-          .map(mv => ({
-            ...mv,
-            distanceSq: (mv.x - corner.point.x) ** 2 + (mv.y - corner.point.y) ** 2
-          }))
-          .sort((a, b) => a.distanceSq - b.distanceSq)
-          .slice(0, 8); // 孔洞使用更多顶点进行修复
-      } else {
-        // 外边界：正常处理，searchCandidates已确保不含孔洞边界点
-        // 优化：使用距离平方避免开方
-        nearbyVertices = searchCandidates
-          .map(mv => ({
-            ...mv,
-            distanceSq: (mv.x - corner.point.x) ** 2 + (mv.y - corner.point.y) ** 2
-          }))
-          .sort((a, b) => a.distanceSq - b.distanceSq)
-          .slice(0, 4);
-      }
-      // 冗余修复：尝试所有可能的顶点组合
-      for (let j = 0; j < nearbyVertices.length; j++) {
-        for (let k = j + 1; k < nearbyVertices.length; k++) {
-          const mv1 = nearbyVertices[j];
-          const mv2 = nearbyVertices[k];
-          const muv1 = meshUVs[mv1.gridY * (gridWidth + 1) + mv1.gridX];
-          const muv2 = meshUVs[mv2.gridY * (gridWidth + 1) + mv2.gridX];
-          if (muv1 && muv2) {
-            // 检查三角形是否有效（避免重复顶点）
-            if (corner.boundaryVertex !== mv1.index && corner.boundaryVertex !== mv2.index && mv1.index !== mv2.index) {
-              if (isHole) {
-                // 孔洞的角落修复：创建从边界到外围网格的连接
-                this.addFaceWithNormalCheck(
-                  corner.boundaryVertex, mv2.index, mv1.index, 
-                  corner.boundaryUV, muv2, muv1, 
-                  isFront
-                );
-              } else {
-                // 外边界的角落修复
-                this.addFaceWithNormalCheck(
-                  corner.boundaryVertex, mv1.index, mv2.index, 
-                  corner.boundaryUV, muv1, muv2, 
-                  isFront
-                );
-              }
-              fixCount++;
-            }
-          }
-        }
-      }
-    });
-    
-    console.log(`修复了${fixCount}个${boundaryType}角落缺口三角形`);
-  }
-
-  // 简化的边界连接算法 - 减少凌乱的三角形
-  createSimpleBoundaryConnection(meshVertices, meshUVs, boundaryVertices, boundaryUVs, isFront, isHole = false) {
-    const validMeshVertices = meshVertices.filter(v => v !== null);
-    if (validMeshVertices.length === 0) return;
-    
-    // 计算边界中心点
-    const boundaryPoints = boundaryVertices.map(v => this.vertices[v - 1]);
-    const centerX = boundaryPoints.reduce((sum, p) => sum + p.x, 0) / boundaryPoints.length;
-    const centerY = boundaryPoints.reduce((sum, p) => sum + p.y, 0) / boundaryPoints.length;
-    
-    // 找到距离边界中心最近的网格顶点
-    // 优化：使用距离平方避免开方
-    const sortedVertices = validMeshVertices
-      .map(mv => ({
-        ...mv,
-        distanceSq: (mv.x - centerX) ** 2 + (mv.y - centerY) ** 2
-      }))
-      .sort((a, b) => a.distanceSq - b.distanceSq)
-      .slice(0, Math.min(this.meshQuality.maxBoundaryConnections, validMeshVertices.length));
-    
-    // 如果网格顶点足够多，只创建必要的连接三角形
-    if (sortedVertices.length >= 2) {
-      // 选择最近的2个顶点，创建少量连接三角形
-      const v1 = sortedVertices[0];
-      const v2 = sortedVertices[1];
-      
-      // 为边界的前几个顶点创建连接
-      for (let i = 0; i < Math.min(3, boundaryVertices.length); i++) {
-        const bv = boundaryVertices[i];
-        const buv = boundaryUVs[i];
-        const meshUV1 = meshUVs[v1.gridY * (this.meshDensity.density + 1) + v1.gridX];
-        const meshUV2 = meshUVs[v2.gridY * (this.meshDensity.density + 1) + v2.gridX];
-        
-        if (meshUV1 && meshUV2) {
-          // 使用带法线检查的面添加方法，确保法线方向正确
-          this.addFaceWithNormalCheck(bv, v1.index, v2.index, buv, meshUV1, meshUV2, isFront);
-        }
-      }
-    } else if (sortedVertices.length === 1) {
-      // 只有一个网格顶点时，创建更少的连接
-      const v = sortedVertices[0];
-      const meshUV = meshUVs[v.gridY * (this.meshDensity.density + 1) + v.gridX];
-      
-      if (meshUV && boundaryVertices.length >= 2) {
-        const bv1 = boundaryVertices[0];
-        const bv2 = boundaryVertices[1];
-        const buv1 = boundaryUVs[0];
-        const buv2 = boundaryUVs[1];
-        
-        // 使用带法线检查的面添加方法，确保法线方向正确
-        this.addFaceWithNormalCheck(bv1, v.index, bv2, buv1, meshUV, buv2, isFront);
-      }
-    }
-  }
-
   // 判断点是否在多边形内（射线法）
   isPointInPolygon(x, y, vertices) {
     let inside = false;
@@ -1070,8 +792,8 @@ export class BadgeOBJExporter {
       }
     }
     
-         return inside;
-   }
+    return inside;
+  }
 
   // 专门用于判断点是否在孔洞内的快速算法
   isPointInHole(x, y, holeParams, holeType) {
@@ -1390,7 +1112,7 @@ export class BadgeOBJExporter {
           targetX, targetY, targetWidth, targetHeight
         );
       } catch (e) {
-        console.error('无法加载贴图图片:', e);
+        // console.error('无法加载贴图图片:', e);
       }
     }
     
@@ -1443,7 +1165,6 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
   meshQuality: { 
     enableBoundaryConnection: true, 
     maxBoundaryConnections: 3,
-    enableRetopology: true
   }
 }, options = {}) { // 接受新的options参数
   try {
@@ -1453,8 +1174,7 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
     exporter.setMeshDensity(exportSettings.meshDensity.density);
     exporter.setMeshQuality(
       exportSettings.meshQuality.enableBoundaryConnection !== false, 
-      exportSettings.meshQuality.maxBoundaryConnections || 3,
-      exportSettings.meshQuality.enableRetopology !== false
+      exportSettings.meshQuality.maxBoundaryConnections || 3
     );
     
     if (options.for3DPrinting) {
@@ -1501,66 +1221,4 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
     console.error("导出OBJ时发生严重错误: ", error);
     return { success: false, message: '导出失败: ' + error.message };
   }
-} 
-
-// 测试重拓扑功能的辅助函数（开发调试用）
-export function testRetopologyFeatures() {
-  const exporter = new BadgeOBJExporter();
-  
-  // 测试不同密度设置
-  const densities = ['low', 'medium', 'high', 'ultra'];
-  densities.forEach(density => {
-    exporter.setMeshQuality(true, 3, true, density);
-    const densityValue = exporter.getRetopologyDensityValue();
-    console.log(`${density}密度: ${densityValue.density}`);
-  });
-  
-  // 输出重拓扑配置信息
-  console.log('重拓扑功能测试完成', {
-    defaultDensity: exporter.meshDensity,
-    qualitySettings: exporter.meshQuality,
-    retopologyDensity: exporter.getRetopologyDensityValue()
-  });
-  
-  return '重拓扑功能配置正常';
 }
-
-// 测试角落修复功能的辅助函数（开发调试用）
-export function testCornerFixFeatures() {
-  console.log('🔧 角落修复功能测试');
-  console.log('- 改进的角落检测算法：基于包围盒位置识别');
-  console.log('- 左上角和右下角缺口专项修复');
-  console.log('- 增加网格顶点搜索范围：4个最近顶点');
-  console.log('- 多三角形修复策略：确保角落完全封闭');
-  console.log('- 重复顶点检查：避免退化三角形');
-  console.log('✅ 角落修复功能已集成到重拓扑边界连接中');
-  
-  return '角落修复功能配置正常';
-}
-
-// 测试法线修复功能的辅助函数（开发调试用）
-export function testNormalFixFeatures() {
-  console.log('🧭 法线修复功能测试');
-  console.log('- 自动法线计算：基于叉积计算三角形法线向量');
-  console.log('- 法线方向检查：正面法线指向+Z，背面法线指向-Z');
-  console.log('- 智能顶点翻转：自动修正错误的顶点顺序');
-  console.log('- 统一应用：角落修复和边界连接都使用法线检查');
-  console.log('- 旋转稳定性：解决模型旋转时的光照异常问题');
-  console.log('✅ 法线修复功能已集成到所有边界连接算法中');
-  
-  return '法线修复功能配置正常';
-}
-
-// 测试孔洞修复功能的辅助函数（开发调试用）
-export function testHoleFixFeatures() {
-  console.log('🕳️ 孔洞修复功能测试');
-  console.log('- 孔洞角落检测：使用15%阈值，比外边界更宽松');
-  console.log('- 外围网格连接：只连接孔洞外围的网格顶点，避免内部填充');
-  console.log('- 特殊法线处理：孔洞边界使用反向顶点顺序');
-  console.log('- 增强连接密度：孔洞使用更多连接点确保封闭');
-  console.log('- 智能过滤：自动排除孔洞内部的网格顶点');
-  console.log('- 角落专项修复：左上角和右下角缺口专门处理');
-  console.log('✅ 孔洞修复功能已集成到重拓扑系统中');
-  
-  return '孔洞修复功能配置正常';
-} 
