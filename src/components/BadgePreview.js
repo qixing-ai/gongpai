@@ -251,7 +251,7 @@ const BadgePreview = ({
                   lineHeight: text.lineHeight,
                   whiteSpace: 'pre-line',
                   maxWidth: (badgeSettings.width - text.x - 5) * UNIT_CONFIG.PREVIEW_SCALE,
-                  textAlign: 'center',
+                  textAlign: 'left',
                   pointerEvents: 'none',
                 }}
               >
