@@ -180,6 +180,11 @@ const useInteraction = (
 
   // 键盘事件处理
   const handleKeyDown = useCallback((e) => {
+    // 如果事件源是输入框、文本域等，则不执行快捷键操作
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable) {
+      return;
+    }
+    
     if (!selectedElement) return;
     
     const step = e.shiftKey ? 5 : 1;
