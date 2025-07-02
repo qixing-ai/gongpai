@@ -152,6 +152,22 @@ const TextSettings = ({
               密度越高，三角面越密集。超高密度(&gt;200)会显著增加文件大小和处理时间
             </Text>
           </div>
+          <div>
+            <Text>贴图分辨率: {exportSettings.textureResolution}px</Text>
+            <Select
+              value={exportSettings.textureResolution}
+              onChange={(value) => setExportSettings(prev => ({ ...prev, textureResolution: value }))}
+              style={{ width: '100%', marginTop: 4 }}
+              size="small"
+            >
+              <Select.Option value={1024}>1024px (标准)</Select.Option>
+              <Select.Option value={2048}>2048px (高清)</Select.Option>
+              <Select.Option value={4096}>4096px (超清)</Select.Option>
+            </Select>
+            <Text style={{ fontSize: '11px', color: '#666' }}>
+              更高的分辨率会带来更清晰的纹理，但会增加文件大小。
+            </Text>
+          </div>
         </Space>
       </Card>
     </div>

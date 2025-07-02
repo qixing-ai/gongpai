@@ -73,6 +73,7 @@ const BadgeDesigner = () => {
   const [exportSettings, setExportSettings] = useState({
     doubleSided: true,    // 双面/单面
     thickness: 2.0,       // 厚度 mm
+    textureResolution: 2048, // 贴图分辨率
     meshDensity: {        // 网格密度设置
       density: 200         // 正方形网格分段数
     },
@@ -187,6 +188,7 @@ const BadgeDesigner = () => {
     setExportSettings({
       doubleSided: true,
       thickness: formatSize(2.0, 1),
+      textureResolution: 2048,
       meshDensity: {
         density: 200
       },

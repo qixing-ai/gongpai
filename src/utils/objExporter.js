@@ -1066,12 +1066,12 @@ export class BadgeOBJExporter {
   }
 
   // 生成贴图
-  async generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings) {
+  async generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     
     // 直接按照工牌的宽高比例设置画布尺寸，确保1:1对应
-    const maxResolution = 1024;
+    const maxResolution = exportSettings?.textureResolution || 2048;
     const aspectRatio = badgeSettings.width / badgeSettings.height;
     
     let canvasWidth, canvasHeight;
@@ -1245,7 +1245,7 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
     );
     
     if (options.for3DPrinting) {
-      exporter.textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings);
+      exporter.textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings);
     }
     
     // 2. 生成几何体 - 修正错误的函数调用
@@ -1275,7 +1275,7 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
       downloadFile(mtlContent, 'badge.mtl');
 
       // 生成并下载纹理图片
-      const textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings);
+      const textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings);
       textureCanvas.toBlob(blob => {
         if (blob) {
           downloadFile(blob, 'badge_texture.png', 'image/png');
