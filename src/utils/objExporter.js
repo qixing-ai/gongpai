@@ -287,7 +287,7 @@ export class BadgeOBJExporter {
   }
 
   // 创建重拓扑网格顶点 - 专门用于高密度网格生成
-  createRetopologyMeshVertices(boundaryVertices, isFront, badgeSettings, thickness, holeVertices = null, holeParams = null, holeType = null) {
+  createRetopologyMeshVertices(boundaryVertices, isFront, badgeSettings, thickness, holeVertices = null, holeParams = null, holeType = null, isSingleSidedBack = false) {
     const { width, height } = badgeSettings;
     const z = isFront ? thickness / 2 : -thickness / 2;
     
@@ -316,9 +316,18 @@ export class BadgeOBJExporter {
         
         if (isValid) {
           const vertexIndex = this.addVertex(x, y, z);
-          // 背面使用镜像UV坐标以实现正确的贴图映射
-          const uvU = isFront ? u : (1.0 - u);
-          const uvV = v;
+          
+          let uvU, uvV;
+          if (isSingleSidedBack) {
+            // 单面模型的背面，所有UV都指向(0,0)
+            uvU = 0.0;
+            uvV = 0.0;
+          } else {
+            // 背面使用镜像UV坐标以实现正确的贴图映射
+            uvU = isFront ? u : (1.0 - u);
+            uvV = v;
+          }
+          
           const uvIndex = this.addUV(uvU, uvV);
 
           if (this.for3DPrinting) {
@@ -474,9 +483,21 @@ export class BadgeOBJExporter {
   createMeshedFace(outerVertices, outerUVs, isFront, badgeSettings, thickness, innerVertices = null, innerUVs = null, holeParams = null, holeType = null) {
     const hasHole = !!innerVertices;
 
+    // 检查是否为单面模型的背面：通过判断其所有边界UV是否都指向同一个坐标
+    let isSingleSidedBack = false;
+    if (!isFront && outerUVs && outerUVs.length > 0) {
+      const firstUv = this.uvs[outerUVs[0] - 1];
+      if (firstUv) {
+        isSingleSidedBack = outerUVs.every(uvIndex => {
+          const uv = this.uvs[uvIndex - 1];
+          return uv && uv.u === firstUv.u && uv.v === firstUv.v;
+        });
+      }
+    }
+
     // 总是使用重拓扑算法
     const { meshNodes, gridWidth, gridHeight } = this.createRetopologyMeshVertices(
-      outerVertices, isFront, badgeSettings, thickness, innerVertices, holeParams, holeType
+      outerVertices, isFront, badgeSettings, thickness, innerVertices, holeParams, holeType, isSingleSidedBack
     );
     
     this.generateRetopologyTriangles(meshNodes, gridWidth, gridHeight, isFront);
@@ -1004,11 +1025,23 @@ export class BadgeOBJExporter {
     return { holeParams, holeType };
   }
 
-  // 生成单面模型
-  generateSingleSidedModel(outerPoints, holeSettings, width, height, thickness) {
-    const doubleSided = false;
-    const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, doubleSided);
+  // 主要生成函数
+  generateBadgeOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings = { doubleSided: true, thickness: 2.0 }) {
+    this.vertices = [];
+    this.uvs = [];
+    this.faces = [];
+    this.vertexIndex = 1;
+    this.texturePixelData = null; // 重置缓存
 
+    const { width, height, borderRadius } = badgeSettings;
+    const thickness = exportSettings.thickness;
+    const doubleSided = exportSettings.doubleSided;
+
+    // 创建外轮廓
+    const outerPoints = this.createPoints('rectangle', { width, height, borderRadius });
+    const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, doubleSided);
+    
+    // 处理孔洞
     const holeInfo = { enabled: false };
     if (holeSettings.enabled) {
       const { holeParams, holeType } = this.calculateHoleParams(holeSettings, width, height);
@@ -1020,43 +1053,8 @@ export class BadgeOBJExporter {
       holeInfo.params = holeParams;
       holeInfo.type = holeType;
     }
-    
-    this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, holeInfo, thickness, { width, height });
-  }
 
-  // 主要生成函数
-  generateBadgeOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings = { doubleSided: true, thickness: 2.0 }) {
-    this.vertices = [];
-    this.uvs = [];
-    this.faces = [];
-    this.vertexIndex = 1;
-    this.texturePixelData = null; // 重置缓存
-
-    const { width, height, borderRadius } = badgeSettings;
-    const thickness = exportSettings.thickness;
-
-    // 创建外轮廓
-    const outerPoints = this.createPoints('rectangle', { width, height, borderRadius });
-    
-    if (exportSettings.doubleSided) {
-      const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, true);
-      
-      const holeInfo = { enabled: false };
-      if (holeSettings.enabled) {
-        const { holeParams, holeType } = this.calculateHoleParams(holeSettings, width, height);
-        const innerPoints = this.createPoints(holeType, holeParams);
-        const inner = this.createVerticesAndUVs(innerPoints, thickness, width, height, true);
-        holeInfo.enabled = true;
-        holeInfo.vertices = inner.vertices;
-        holeInfo.uvs = inner.uvs;
-        holeInfo.params = holeParams;
-        holeInfo.type = holeType;
-      }
-
-      this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, holeInfo, thickness, badgeSettings);
-    } else {
-      this.generateSingleSidedModel(outerPoints, holeSettings, width, height, thickness);
-    }
+    this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, holeInfo, thickness, badgeSettings);
 
     return this.generateOBJContent(badgeSettings, imageSettings, textSettings, exportSettings);
   }
@@ -1234,8 +1232,7 @@ export class BadgeOBJExporter {
     
     this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY, canvasWidth, canvasHeight);
     
-    // 绘制左下角白色区域（供单面模型背面使用），确保在最上层
-    ctx.globalAlpha = 1.0;
+    // 在贴图的(0,0)位置画一个白色小方块，用于单面模型的背面
     this.drawWhiteCorner(ctx, canvasWidth, canvasHeight);
     
     return canvas;
