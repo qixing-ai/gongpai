@@ -26,7 +26,7 @@
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
     ```
 2.  **激活 nvm**:
-    关闭并重新打开终端，或者运行 `source ~/.bashrc` (如果使用 Zsh, 请将 `.bashrc` 替换为 `.zshrc`)。
+    export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 3.  **安装 Node.js**:
     运行以下命令来安装最新的 LTS (长期支持) 版本：
     ```bash
