@@ -5,6 +5,7 @@ export class BadgeOBJExporter {
     this.uvs = [];
     this.faces = [];
     this.vertexIndex = 1;
+    this.texturePixelData = null; // 缓存纹理像素数据
 
     // 3D打印模式设置
     this.for3DPrinting = options.for3DPrinting || false;
@@ -53,24 +54,71 @@ export class BadgeOBJExporter {
     }
   }
 
-  // 从纹理画布中获取指定UV坐标的颜色
+  // 从纹理画布中获取指定UV坐标的颜色 - 升级为双线性插值
   getVertexColor(u, v) {
     if (!this.textureCanvas) return { r: 1, g: 1, b: 1 };
 
-    const ctx = this.textureCanvas.getContext('2d');
-    const x = Math.floor(u * this.textureCanvas.width);
-    const y = Math.floor((1 - v) * this.textureCanvas.height); // V坐标通常是反的
+    // 首次调用时缓存整个纹理的像素数据以提高性能
+    if (!this.texturePixelData) {
+      const ctx = this.textureCanvas.getContext('2d', { willReadFrequently: true });
+      this.texturePixelData = ctx.getImageData(0, 0, this.textureCanvas.width, this.textureCanvas.height);
+    }
     
-    // clamp coordinates
-    const clampedX = Math.max(0, Math.min(x, this.textureCanvas.width - 1));
-    const clampedY = Math.max(0, Math.min(y, this.textureCanvas.height - 1));
+    const w = this.texturePixelData.width;
+    const h = this.texturePixelData.height;
 
-    const pixelData = ctx.getImageData(clampedX, clampedY, 1, 1).data;
+    // V坐标通常是反的
+    const texX = u * w;
+    const texY = (1 - v) * h;
+    
+    const x1 = Math.floor(texX);
+    const y1 = Math.floor(texY);
+
+    // 计算插值因子
+    const fx = texX - x1;
+    const fy = texY - y1;
+    
+    // 获取周围四个像素的颜色
+    const c11_rgb = this._getPixelFromCache(x1, y1);
+    const c21_rgb = this._getPixelFromCache(x1 + 1, y1);
+    const c12_rgb = this._getPixelFromCache(x1, y1 + 1);
+    const c22_rgb = this._getPixelFromCache(x1 + 1, y1 + 1);
+    
+    const lerp = (a, b, t) => a * (1 - t) + b * t;
+
+    // 在X方向上插值
+    const r_top = lerp(c11_rgb[0], c21_rgb[0], fx);
+    const g_top = lerp(c11_rgb[1], c21_rgb[1], fx);
+    const b_top = lerp(c11_rgb[2], c21_rgb[2], fx);
+
+    const r_bottom = lerp(c12_rgb[0], c22_rgb[0], fx);
+    const g_bottom = lerp(c12_rgb[1], c22_rgb[1], fx);
+    const b_bottom = lerp(c12_rgb[2], c22_rgb[2], fx);
+
+    // 在Y方向上插值
+    const r = lerp(r_top, r_bottom, fy);
+    const g = lerp(g_top, g_bottom, fy);
+    const b = lerp(b_top, b_bottom, fy);
+
     return {
-      r: pixelData[0] / 255.0,
-      g: pixelData[1] / 255.0,
-      b: pixelData[2] / 255.0,
+      r: r / 255.0,
+      g: g / 255.0,
+      b: b / 255.0,
     };
+  }
+  
+  // 内部辅助函数：从缓存的像素数据中安全地读取颜色
+  _getPixelFromCache(x, y) {
+    const w = this.texturePixelData.width;
+    const h = this.texturePixelData.height;
+    
+    // 坐标钳制，防止越界
+    const clampedX = Math.max(0, Math.min(x, w - 1));
+    const clampedY = Math.max(0, Math.min(y, h - 1));
+    
+    const i = (clampedY * w + clampedX) * 4;
+    const data = this.texturePixelData.data;
+    return [data[i], data[i+1], data[i+2]];
   }
 
   // 添加UV坐标
@@ -982,6 +1030,7 @@ export class BadgeOBJExporter {
     this.uvs = [];
     this.faces = [];
     this.vertexIndex = 1;
+    this.texturePixelData = null; // 重置缓存
 
     const { width, height, borderRadius } = badgeSettings;
     const thickness = exportSettings.thickness;
