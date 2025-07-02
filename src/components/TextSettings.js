@@ -268,7 +268,7 @@ const TextSettings = ({
             <Col span={12}>
               <Slider
                 min={200}
-                max={12000}
+                max={1500}
                 step={100}
                 value={exportSettings.meshDensity?.density || 500}
                 onChange={(value) => setExportSettings(prev => ({
@@ -281,7 +281,7 @@ const TextSettings = ({
             <Col span={6}>
               <InputNumber
                   min={200}
-                  max={12000}
+                  max={1500}
                   step={100}
                   value={exportSettings.meshDensity?.density || 500}
                   onChange={(value) => setExportSettings(prev => ({
@@ -294,7 +294,7 @@ const TextSettings = ({
             </Col>
           </Row>
           <Text style={{ fontSize: '11px', color: '#666' }}>
-            密度越高，三角面越密集。超高密度(&gt;1000)会显著增加文件大小和处理时间
+            密度越高，三角面越密集。较高密度(&gt;800)会增加文件大小和处理时间
           </Text>
           <Row align="middle" gutter={8}>
             <Col span={8}><Text>贴图分辨率</Text></Col>
