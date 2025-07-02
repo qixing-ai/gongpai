@@ -85,7 +85,7 @@ const BadgeDesigner = () => {
       thickness: 2.0,       // 厚度 mm
       textureResolution: 2048, // 贴图分辨率
       meshDensity: {        // 网格密度设置
-        density: 200         // 正方形网格分段数
+        density: 500         // 正方形网格分段数
       },
       meshQuality: {        // 网格质量设置
         enableBoundaryConnection: true,  // 是否启用边界连接
