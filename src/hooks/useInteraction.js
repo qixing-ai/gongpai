@@ -8,14 +8,14 @@ const useInteraction = (
   setHoleSettings,
   imageSettings,
   setImageSettings,
-  textSettings,
-  setTextSettings,
+  texts,
+  setTexts,
   UNIT_CONFIG
 ) => {
   // 统一的交互状态
   const [interactionState, setInteractionState] = useState({
     type: null, // 'drag', 'resize-badge', 'resize-image', 'resize-hole'
-    element: null, // 'badge', 'image', 'text', 'hole'
+    element: null, // { type: 'badge' }, { type: 'image' }, { type: 'text', id: '...' }, { type: 'hole' }
     resizeType: null, // 'width', 'height', 'corner', 'size', 'position'
     startX: 0,
     startY: 0,
@@ -39,16 +39,23 @@ const useInteraction = (
   const startInteraction = useCallback((e, type, element, resizeType = null) => {
     e.preventDefault();
     e.stopPropagation();
-    setSelectedElement(element);
     
+    // 如果交互元素是文字，确保它被选中
+    if (element?.type === 'text') {
+      setSelectedElement(element);
+    }
+
     const startValues = {};
     if (type === 'drag') {
-      if (element === 'image') {
+      if (element?.type === 'image') {
         startValues.x = imageSettings.x;
         startValues.y = imageSettings.y;
-      } else if (element === 'text') {
-        startValues.x = textSettings.x;
-        startValues.y = textSettings.y;
+      } else if (element?.type === 'text') {
+        const text = texts.find(t => t.id === element.id);
+        if (text) {
+          startValues.x = text.x;
+          startValues.y = text.y;
+        }
       }
     } else if (type === 'resize-badge') {
       startValues.width = badgeSettings.width;
@@ -71,7 +78,7 @@ const useInteraction = (
       startY: e.clientY,
       startValues,
     });
-  }, [imageSettings, textSettings, badgeSettings, holeSettings]);
+  }, [imageSettings, texts, badgeSettings, holeSettings]);
 
   // 处理交互移动
   const handleInteractionMove = useCallback((e) => {
@@ -83,23 +90,30 @@ const useInteraction = (
     const { type, element, resizeType, startValues } = interactionState;
     
     if (type === 'drag') {
+      if (!element) return;
+
       let maxX, maxY;
       
-      if (element === 'image') {
+      if (element.type === 'image') {
         maxX = badgeSettings.width - imageSettings.width;
         maxY = badgeSettings.height - imageSettings.height;
-      } else if (element === 'text') {
-        maxX = badgeSettings.width - 5;
-        maxY = badgeSettings.height - 5;
-      }
-      
-      const newX = validateSize(startValues.x + deltaX, { min: 0, max: maxX });
-      const newY = validateSize(startValues.y + deltaY, { min: 0, max: maxY });
-      
-      if (element === 'image') {
+        const newX = validateSize(startValues.x + deltaX, { min: 0, max: maxX });
+        const newY = validateSize(startValues.y + deltaY, { min: 0, max: maxY });
         setImageSettings(prev => ({ ...prev, x: newX, y: newY }));
-      } else if (element === 'text') {
-        setTextSettings(prev => ({ ...prev, x: newX, y: newY }));
+
+      } else if (element.type === 'text') {
+        const text = texts.find(t => t.id === element.id);
+        if (text) {
+            // 简易边界检测，未来可以根据文字实际渲染宽度进行优化
+          maxX = badgeSettings.width - 10;
+          maxY = badgeSettings.height - 10;
+          const newX = validateSize(startValues.x + deltaX, { min: 0, max: maxX });
+          const newY = validateSize(startValues.y + deltaY, { min: 0, max: maxY });
+
+          setTexts(currentTexts => currentTexts.map(t =>
+            t.id === element.id ? { ...t, x: newX, y: newY } : t
+          ));
+        }
       }
     } else if (type === 'resize-badge') {
       let newWidth = startValues.width;
@@ -141,7 +155,7 @@ const useInteraction = (
         setHoleSettings(prev => ({ ...prev, offsetY: newOffsetY }));
       }
     }
-  }, [interactionState, badgeSettings, imageSettings, setBadgeSettings, setImageSettings, setTextSettings, setHoleSettings, UNIT_CONFIG]);
+  }, [interactionState, badgeSettings, imageSettings, texts, setBadgeSettings, setImageSettings, setTexts, setHoleSettings, UNIT_CONFIG]);
 
   // 结束交互
   const endInteraction = useCallback(() => {
@@ -156,10 +170,10 @@ const useInteraction = (
   }, []);
 
   // 双击编辑文字
-  const handleDoubleClick = useCallback((e, type) => {
+  const handleDoubleClick = useCallback((e, element) => {
     e.preventDefault();
     e.stopPropagation();
-    if (type === 'text') {
+    if (element?.type === 'text') {
       message.info('双击文字可快速编辑（功能开发中）');
     }
   }, []);
@@ -173,71 +187,79 @@ const useInteraction = (
     switch (e.key) {
       case 'ArrowLeft':
         e.preventDefault();
-        if (selectedElement === 'image') {
+        if (selectedElement?.type === 'image') {
           setImageSettings(prev => ({ 
             ...prev, 
             x: validateSize(prev.x - step, { min: 0, max: badgeSettings.width - prev.width })
           }));
-        } else if (selectedElement === 'text') {
-          setTextSettings(prev => ({ 
-            ...prev, 
-            x: validateSize(prev.x - step, { min: 0, max: badgeSettings.width - 5 })
-          }));
+        } else if (selectedElement?.type === 'text') {
+          setTexts(prevTexts => prevTexts.map(t => 
+            t.id === selectedElement.id 
+            ? { ...t, x: validateSize(t.x - step, { min: 0, max: badgeSettings.width - 10 }) } 
+            : t
+          ));
         }
         break;
       case 'ArrowRight':
         e.preventDefault();
-        if (selectedElement === 'image') {
+        if (selectedElement?.type === 'image') {
           setImageSettings(prev => ({
             ...prev,
             x: validateSize(prev.x + step, { min: 0, max: badgeSettings.width - prev.width })
           }));
-        } else if (selectedElement === 'text') {
-          setTextSettings(prev => ({
-            ...prev,
-            x: validateSize(prev.x + step, { min: 0, max: badgeSettings.width - 5 })
-          }));
+        } else if (selectedElement?.type === 'text') {
+          setTexts(prevTexts => prevTexts.map(t => 
+            t.id === selectedElement.id 
+            ? { ...t, x: validateSize(t.x + step, { min: 0, max: badgeSettings.width - 10 }) } 
+            : t
+          ));
         }
         break;
       case 'ArrowUp':
         e.preventDefault();
-        if (selectedElement === 'image') {
+        if (selectedElement?.type === 'image') {
           setImageSettings(prev => ({ 
             ...prev, 
             y: validateSize(prev.y - step, { min: 0, max: badgeSettings.height - prev.height })
           }));
-        } else if (selectedElement === 'text') {
-          setTextSettings(prev => ({ 
-            ...prev, 
-            y: validateSize(prev.y - step, { min: 0, max: badgeSettings.height - 5 })
-          }));
+        } else if (selectedElement?.type === 'text') {
+          setTexts(prevTexts => prevTexts.map(t => 
+            t.id === selectedElement.id 
+            ? { ...t, y: validateSize(t.y - step, { min: 0, max: badgeSettings.height - 10 }) } 
+            : t
+          ));
         }
         break;
       case 'ArrowDown':
         e.preventDefault();
-        if (selectedElement === 'image') {
+        if (selectedElement?.type === 'image') {
           setImageSettings(prev => ({
             ...prev,
             y: validateSize(prev.y + step, { min: 0, max: badgeSettings.height - prev.height })
           }));
-        } else if (selectedElement === 'text') {
-          setTextSettings(prev => ({
-            ...prev,
-            y: validateSize(prev.y + step, { min: 0, max: badgeSettings.height - 5 })
-          }));
+        } else if (selectedElement?.type === 'text') {
+          setTexts(prevTexts => prevTexts.map(t => 
+            t.id === selectedElement.id 
+            ? { ...t, y: validateSize(t.y + step, { min: 0, max: badgeSettings.height - 10 }) } 
+            : t
+          ));
         }
         break;
       case 'Delete':
       case 'Backspace':
         e.preventDefault();
-        if (selectedElement === 'image') {
+        if (selectedElement?.type === 'image') {
           setImageSettings(prev => ({ ...prev, src: null }));
           setSelectedElement(null);
           message.success('图片已删除');
-        } else if (selectedElement === 'hole') {
+        } else if (selectedElement?.type === 'hole') {
           setHoleSettings(prev => ({ ...prev, enabled: false }));
           setSelectedElement(null);
           message.success('穿孔已删除');
+        } else if (selectedElement?.type === 'text') {
+          setTexts(prev => prev.filter(t => t.id !== selectedElement.id));
+          setSelectedElement(null);
+          message.success('文字已删除');
         }
         break;
       case 'Escape':
@@ -245,7 +267,7 @@ const useInteraction = (
         setSelectedElement(null);
         break;
     }
-  }, [selectedElement, badgeSettings, setImageSettings, setTextSettings, setHoleSettings]);
+  }, [selectedElement, badgeSettings, setImageSettings, setTexts, setHoleSettings]);
 
   // 事件监听
   useEffect(() => {

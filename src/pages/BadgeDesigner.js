@@ -66,8 +66,9 @@ const BadgeDesigner = () => {
   });
 
   // 文字设置 - 统一使用毫米(mm)
-  const [textSettings, setTextSettings, { removeItem: removeTextSettings }] = useLocalStorageState('textSettings', {
-    defaultValue: {
+  const [texts, setTexts, { removeItem: removeTexts }] = useLocalStorageState('texts', {
+    defaultValue: [{
+      id: `text-${Date.now()}`,
       content: 'XX\nXXX部',
       fontSize: 4,      // mm
       color: '#000000',
@@ -75,7 +76,7 @@ const BadgeDesigner = () => {
       x: 26,            // mm
       y: 68,            // mm
       lineHeight: 1.4,
-    }
+    }]
   });
 
   // 导出设置 - 统一使用毫米(mm)
@@ -109,8 +110,8 @@ const BadgeDesigner = () => {
     setHoleSettings,
     imageSettings,
     setImageSettings,
-    textSettings,
-    setTextSettings,
+    texts,
+    setTexts,
     UNIT_CONFIG
   );
 
@@ -139,7 +140,7 @@ const BadgeDesigner = () => {
           badgeSettings, 
           holeSettings, 
           imageSettings, 
-          textSettings,
+          texts,
           exportSettings,
           { for3DPrinting }
         );
@@ -167,7 +168,7 @@ const BadgeDesigner = () => {
     removeBadgeSettings();
     removeHoleSettings();
     removeImageSettings();
-    removeTextSettings();
+    removeTexts();
     removeExportSettings();
     setSelectedElement(null);
     message.success('设计已重置');
@@ -236,7 +237,7 @@ const BadgeDesigner = () => {
                 badgeSettings={badgeSettings}
                 holeSettings={holeSettings}
                 imageSettings={imageSettings}
-                textSettings={textSettings}
+                texts={texts}
                 selectedElement={selectedElement}
                 setSelectedElement={setSelectedElement}
                 interactionState={interactionState}
@@ -253,11 +254,13 @@ const BadgeDesigner = () => {
                 marginBottom: '8px'
               }}>
                 <TextSettings
-                  textSettings={textSettings}
-                  setTextSettings={setTextSettings}
+                  texts={texts}
+                  setTexts={setTexts}
                   badgeSettings={badgeSettings}
                   exportSettings={exportSettings}
                   setExportSettings={setExportSettings}
+                  selectedElement={selectedElement}
+                  setSelectedElement={setSelectedElement}
                   UNIT_CONFIG={UNIT_CONFIG}
                   formatSize={formatSize}
                 />

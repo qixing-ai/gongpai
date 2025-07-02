@@ -7,7 +7,7 @@ const BadgePreview = ({
   badgeSettings,
   holeSettings,
   imageSettings,
-  textSettings,
+  texts,
   selectedElement,
   setSelectedElement,
   interactionState,
@@ -87,15 +87,15 @@ const BadgePreview = ({
             backgroundColor: badgeSettings.backgroundColor,
             borderRadius: badgeSettings.borderRadius * UNIT_CONFIG.PREVIEW_SCALE,
             position: 'relative',
-            border: selectedElement === 'badge' ? '2px solid #1890ff' : '1px solid #d9d9d9',
+            border: selectedElement?.type === 'badge' ? '2px solid #1890ff' : '1px solid #d9d9d9',
             margin: '10px auto',
             overflow: 'visible',
-            boxShadow: selectedElement === 'badge' ? '0 0 8px rgba(24, 144, 255, 0.3)' : '0 4px 12px rgba(0,0,0,0.1)',
+            boxShadow: selectedElement?.type === 'badge' ? '0 0 8px rgba(24, 144, 255, 0.3)' : '0 4px 12px rgba(0,0,0,0.1)',
             cursor: interactionState.type === 'drag' ? 'grabbing' : 'pointer',
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              setSelectedElement('badge');
+              setSelectedElement({ type: 'badge' });
             }
           }}
         >
@@ -110,20 +110,20 @@ const BadgePreview = ({
                 width: holeSettings.shape === 'rectangle' ? holeSettings.width * UNIT_CONFIG.PREVIEW_SCALE : holeSettings.size * UNIT_CONFIG.PREVIEW_SCALE,
                 height: holeSettings.shape === 'rectangle' ? holeSettings.height * UNIT_CONFIG.PREVIEW_SCALE : holeSettings.size * UNIT_CONFIG.PREVIEW_SCALE,
                 backgroundColor: 'white',
-                border: selectedElement === 'hole' ? '2px solid #52c41a' : '2px solid #999',
+                border: selectedElement?.type === 'hole' ? '2px solid #52c41a' : '2px solid #999',
                 borderRadius: holeSettings.shape === 'circle' ? '50%' : 
                             holeSettings.shape === 'oval' ? '50%' : 
                             holeSettings.shape === 'rectangle' ? holeSettings.borderRadius * UNIT_CONFIG.PREVIEW_SCALE + 'px' : '2px',
                 cursor: 'pointer',
-                boxShadow: selectedElement === 'hole' ? '0 0 8px rgba(82, 196, 26, 0.3)' : 'none',
+                boxShadow: selectedElement?.type === 'hole' ? '0 0 8px rgba(82, 196, 26, 0.3)' : 'none',
               }}
               onClick={(e) => {
                 e.stopPropagation();
-                setSelectedElement('hole');
+                setSelectedElement({ type: 'hole' });
               }}
             >
               {/* 穿孔调整手柄 */}
-              {selectedElement === 'hole' && (
+              {selectedElement?.type === 'hole' && (
                 <>
                   {holeSettings.shape === 'rectangle' ? (
                     <>
@@ -154,14 +154,18 @@ const BadgePreview = ({
                 top: imageSettings.y * UNIT_CONFIG.PREVIEW_SCALE,
                 width: imageSettings.width * UNIT_CONFIG.PREVIEW_SCALE,
                 height: imageSettings.height * UNIT_CONFIG.PREVIEW_SCALE,
-                cursor: interactionState.type === 'drag' && interactionState.element === 'image' ? 'grabbing' : 'grab',
-                border: selectedElement === 'image' ? '2px solid #1890ff' : 
-                       (interactionState.element === 'image' && interactionState.type === 'drag' ? '2px dashed #1890ff' : '2px solid transparent'),
+                cursor: interactionState.type === 'drag' && interactionState.element?.type === 'image' ? 'grabbing' : 'grab',
+                border: selectedElement?.type === 'image' ? '2px solid #1890ff' : 
+                       (interactionState.element?.type === 'image' && interactionState.type === 'drag' ? '2px dashed #1890ff' : '2px solid transparent'),
                 borderRadius: '4px',
-                boxShadow: selectedElement === 'image' ? '0 0 8px rgba(24, 144, 255, 0.3)' : 'none',
+                boxShadow: selectedElement?.type === 'image' ? '0 0 8px rgba(24, 144, 255, 0.3)' : 'none',
               }}
-              onMouseDown={(e) => startInteraction(e, 'drag', 'image')}
-              onDoubleClick={(e) => handleDoubleClick(e, 'image')}
+              onMouseDown={(e) => {
+                  e.stopPropagation();
+                  setSelectedElement({ type: 'image' });
+                  startInteraction(e, 'drag', { type: 'image' });
+              }}
+              onDoubleClick={(e) => handleDoubleClick(e, { type: 'image' })}
             >
               <img
                 src={imageSettings.src}
@@ -177,14 +181,14 @@ const BadgePreview = ({
               />
               
               {/* 图片调整手柄 */}
-              {selectedElement === 'image' && (
+              {selectedElement?.type === 'image' && (
                 <>
                   {renderResizeHandle('right center-y', 'width', '#1890ff',
-                    (e) => startInteraction(e, 'resize-image', 'image', 'width'), '拖拽调整宽度')}
+                    (e) => startInteraction(e, 'resize-image', { type: 'image' }, 'width'), '拖拽调整宽度')}
                   {renderResizeHandle('bottom center-x', 'height', '#1890ff',
-                    (e) => startInteraction(e, 'resize-image', 'image', 'height'), '拖拽调整高度')}
+                    (e) => startInteraction(e, 'resize-image', { type: 'image' }, 'height'), '拖拽调整高度')}
                   {renderResizeHandle('right bottom', 'corner', '#1890ff',
-                    (e) => startInteraction(e, 'resize-image', 'image', 'corner'), '拖拽同时调整宽度和高度')}
+                    (e) => startInteraction(e, 'resize-image', { type: 'image' }, 'corner'), '拖拽同时调整宽度和高度')}
                 </>
               )}
               
@@ -201,7 +205,7 @@ const BadgePreview = ({
                   borderRadius: '3px',
                   fontSize: '10px',
                   whiteSpace: 'nowrap',
-                  opacity: interactionState.element === 'image' && interactionState.type === 'drag' ? 1 : 0,
+                  opacity: interactionState.element?.type === 'image' && interactionState.type === 'drag' ? 1 : 0,
                   transition: 'opacity 0.2s',
                   pointerEvents: 'none',
                 }}
@@ -212,70 +216,93 @@ const BadgePreview = ({
           )}
 
           {/* 文字 */}
-          <div
-            style={{
-              position: 'absolute',
-              left: textSettings.x * UNIT_CONFIG.PREVIEW_SCALE,
-              top: textSettings.y * UNIT_CONFIG.PREVIEW_SCALE,
-              cursor: interactionState.type === 'drag' && interactionState.element === 'text' ? 'grabbing' : 'grab',
-              border: selectedElement === 'text' ? '2px solid #1890ff' :
-                     (interactionState.element === 'text' && interactionState.type === 'drag' ? '2px dashed #1890ff' : '2px solid transparent'),
-              borderRadius: '4px',
-              padding: '2px',
-              minWidth: '20px',
-              minHeight: '20px',
-              boxShadow: selectedElement === 'text' ? '0 0 8px rgba(24, 144, 255, 0.3)' : 'none',
-            }}
-            onMouseDown={(e) => startInteraction(e, 'drag', 'text')}
-            onDoubleClick={(e) => handleDoubleClick(e, 'text')}
-          >
+          {texts.map(text => (
             <div
-              style={{
-                fontSize: textSettings.fontSize * UNIT_CONFIG.PREVIEW_SCALE,
-                color: textSettings.color,
-                fontFamily: textSettings.fontFamily,
-                lineHeight: textSettings.lineHeight,
-                whiteSpace: 'pre-line',
-                maxWidth: (badgeSettings.width - textSettings.x - 5) * UNIT_CONFIG.PREVIEW_SCALE,
-                textAlign: 'center',
-                pointerEvents: 'none',
-              }}
-            >
-              {textSettings.content}
-            </div>
-            {/* 拖拽提示 */}
-            <div
+              key={text.id}
               style={{
                 position: 'absolute',
-                top: '-25px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: 'rgba(0,0,0,0.7)',
-                color: 'white',
-                padding: '2px 6px',
-                borderRadius: '3px',
-                fontSize: '10px',
-                whiteSpace: 'nowrap',
-                opacity: interactionState.element === 'text' && interactionState.type === 'drag' ? 1 : 0,
-                transition: 'opacity 0.2s',
-                pointerEvents: 'none',
+                left: text.x * UNIT_CONFIG.PREVIEW_SCALE,
+                top: text.y * UNIT_CONFIG.PREVIEW_SCALE,
+                cursor: interactionState.type === 'drag' && interactionState.element?.id === text.id ? 'grabbing' : 'grab',
+                border: selectedElement?.type === 'text' && selectedElement?.id === text.id 
+                  ? '2px solid #1890ff' 
+                  : (interactionState.element?.id === text.id && interactionState.type === 'drag' 
+                    ? '2px dashed #1890ff' 
+                    : '2px solid transparent'),
+                borderRadius: '4px',
+                padding: '2px',
+                minWidth: '20px',
+                minHeight: '20px',
+                boxShadow: selectedElement?.type === 'text' && selectedElement?.id === text.id ? '0 0 8px rgba(24, 144, 255, 0.3)' : 'none',
+                zIndex: selectedElement?.type === 'text' && selectedElement?.id === text.id ? 2 : 1, // bring selected to front
               }}
+              onMouseDown={(e) => {
+                  e.stopPropagation();
+                  setSelectedElement({ type: 'text', id: text.id });
+                  startInteraction(e, 'drag', { type: 'text', id: text.id });
+              }}
+              onDoubleClick={(e) => handleDoubleClick(e, { type: 'text', id: text.id })}
             >
-              拖拽调整位置
+              <div
+                style={{
+                  fontSize: text.fontSize * UNIT_CONFIG.PREVIEW_SCALE,
+                  color: text.color,
+                  fontFamily: text.fontFamily,
+                  lineHeight: text.lineHeight,
+                  whiteSpace: 'pre-line',
+                  maxWidth: (badgeSettings.width - text.x - 5) * UNIT_CONFIG.PREVIEW_SCALE,
+                  textAlign: 'center',
+                  pointerEvents: 'none',
+                }}
+              >
+                {text.content}
+              </div>
+              {/* 拖拽提示 */}
+              {selectedElement?.type === 'text' && selectedElement?.id === text.id && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '-25px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'rgba(0,0,0,0.7)',
+                    color: 'white',
+                    padding: '2px 6px',
+                    borderRadius: '3px',
+                    fontSize: '10px',
+                    whiteSpace: 'nowrap',
+                    opacity: interactionState.element?.id === text.id && interactionState.type === 'drag' ? 1 : 0,
+                    transition: 'opacity 0.2s',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  拖拽调整位置
+                </div>
+              )}
             </div>
-          </div>
+          ))}
         </div>
         
-        {/* 工牌调整手柄 */}
-        {selectedElement === 'badge' && (
-          <>
-            {renderResizeHandle('right center-y', 'width', '#1890ff',
-              (e) => startInteraction(e, 'resize-badge', 'badge', 'width'), '拖拽调整宽度')}
-            {renderResizeHandle('bottom center-x', 'height', '#1890ff',
-              (e) => startInteraction(e, 'resize-badge', 'badge', 'height'), '拖拽调整高度')}
-            {renderResizeHandle('right bottom', 'corner', '#1890ff',
-              (e) => startInteraction(e, 'resize-badge', 'badge', 'corner'), '拖拽同时调整宽度和高度')}
-          </>
+        {/* Badge 调整手柄 */}
+        {selectedElement?.type === 'badge' && (
+          <div style={{
+            position: 'absolute', 
+            top: 10,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: badgeWidth, 
+            height: badgeHeight,
+            pointerEvents: 'none'
+          }}>
+            <div style={{position: 'relative', width: '100%', height: '100%', pointerEvents: 'auto'}}>
+                {renderResizeHandle('right center-y', 'width', '#1890ff',
+                  (e) => startInteraction(e, 'resize-badge', 'badge', 'width'), '拖拽调整宽度')}
+                {renderResizeHandle('bottom center-x', 'height', '#1890ff',
+                  (e) => startInteraction(e, 'resize-badge', 'badge', 'height'), '拖拽调整高度')}
+                {renderResizeHandle('right bottom', 'corner', '#1890ff',
+                  (e) => startInteraction(e, 'resize-badge', 'badge', 'corner'), '拖拽同时调整宽度和高度')}
+            </div>
+          </div>
         )}
       </div>
     );

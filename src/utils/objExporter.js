@@ -1026,7 +1026,30 @@ export class BadgeOBJExporter {
   }
 
   // 主要生成函数
-  generateBadgeOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings = { doubleSided: true, thickness: 2.0 }) {
+  generateBadgeOBJ(badgeSettings, holeSettings, imageSettings, texts, exportSettings = { doubleSided: true, thickness: 2.0 }) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const objContent = await this.generateOBJContent(badgeSettings, holeSettings, imageSettings, texts, exportSettings);
+        
+        let mtlContent = null;
+        if (!this.for3DPrinting) {
+          mtlContent = this.generateMTLContent();
+        }
+
+        let textureBlob = null;
+        if (this.textureCanvas) {
+          textureBlob = await new Promise(res => this.textureCanvas.toBlob(res, 'image/png'));
+        }
+
+        resolve({ objContent, mtlContent, textureBlob });
+      } catch (error) {
+        console.error("Error generating OBJ:", error);
+        reject(error);
+      }
+    });
+  }
+
+  async generateOBJContent(badgeSettings, holeSettings, imageSettings, texts, exportSettings) {
     this.vertices = [];
     this.uvs = [];
     this.faces = [];
@@ -1056,11 +1079,7 @@ export class BadgeOBJExporter {
 
     this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, holeInfo, thickness, badgeSettings);
 
-    return this.generateOBJContent(badgeSettings, imageSettings, textSettings, exportSettings);
-  }
-
-  // 生成OBJ文件内容
-  generateOBJContent(badgeSettings, imageSettings, textSettings, exportSettings) {
+    // 生成OBJ文件内容
     let obj = '';
     if (!this.for3DPrinting) {
       obj += 'mtllib badge.mtl\n';
@@ -1113,7 +1132,7 @@ export class BadgeOBJExporter {
   }
 
   // 生成贴图
-  async generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings) {
+  async generateTextureCanvas(badgeSettings, holeSettings, imageSettings, texts, exportSettings) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     
@@ -1226,52 +1245,69 @@ export class BadgeOBJExporter {
           targetX, targetY, targetWidth, targetHeight
         );
       } catch (e) {
-        // console.error('无法加载贴图图片:', e);
+        throw new Error("Failed to load image for texture.");
       }
     }
     
-    this.drawText(ctx, textSettings, badgeSettings, scaleX, scaleY, canvasWidth, canvasHeight);
-    
-    // 在贴图的(0,0)位置画一个白色小方块，用于单面模型的背面
-    this.drawWhiteCorner(ctx, canvasWidth, canvasHeight);
-    
+    // 绘制文字
+    for (const text of texts) {
+      this.drawText(ctx, text, badgeSettings, scaleX, scaleY, canvas.width, canvas.height);
+    }
+
+    // 在单面模型的背面UV区域画一个白色小方块，避免采样到黑色
+    if (!exportSettings.doubleSided) {
+      this.drawWhiteCorner(ctx, canvas.width, canvas.height);
+    }
+
     return canvas;
   }
 
-  // 绘制左下角白色区域（供单面模型背面使用）
   drawWhiteCorner(ctx, canvasWidth, canvasHeight) {
-    ctx.fillStyle = '#ffffff';
-    const whiteAreaSize = Math.min(32, Math.min(canvasWidth, canvasHeight) / 16);
-    ctx.fillRect(0, canvasHeight - whiteAreaSize, whiteAreaSize, whiteAreaSize);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, 2, 2); // 在左上角(0,0)处画一个2x2的白色像素块
   }
 
-  // 绘制文字
-  drawText(ctx, textSettings, badgeSettings, scaleX, scaleY, canvasWidth, canvasHeight) {
-    if (!textSettings.content) return;
-    
-    ctx.globalAlpha = 1.0;
-    ctx.fillStyle = textSettings.color;
-    ctx.textAlign = 'left'; // 使用left对齐，完全按照预览的定位逻辑
-    ctx.textBaseline = 'top'; // 与页面预览的定位方式一致
-    ctx.font = `${textSettings.fontSize * scaleX}px ${textSettings.fontFamily}`;
-    
-    // 直接使用与预览相同的定位逻辑：
-    // textSettings.x 就是文字的起始位置，不做任何偏移计算
-    
-    const x = textSettings.x * scaleX;
-    const y = textSettings.y * scaleY;
-    const lineHeight = textSettings.fontSize * scaleX * textSettings.lineHeight;
-    
-    // 简单的分行处理，与预览完全一致
-    const lines = textSettings.content.split('\n');
-    lines.forEach((line, i) => {
-      ctx.fillText(line, x, y + i * lineHeight);
+  drawText(ctx, text, badgeSettings, scaleX, scaleY, canvasWidth, canvasHeight) {
+    const { content, fontSize, color, fontFamily, x, y, lineHeight } = text;
+    if (!content) return;
+
+    const scaledFontSize = fontSize * scaleX;
+    ctx.fillStyle = color;
+    ctx.font = `${scaledFontSize}px ${fontFamily}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    const lines = content.split('\n');
+    const startX = x * scaleX;
+    const startY = y * scaleY;
+    const scaledLineHeight = scaledFontSize * lineHeight;
+
+    lines.forEach((line, index) => {
+      // 为了匹配预览中的居中效果，我们需要计算每行的偏移
+      const textMetrics = ctx.measureText(line);
+      const textWidth = textMetrics.width;
+      
+      // 找出所有行中最长的一行，以它的宽度为容器宽度
+      let containerWidth = 0;
+      if (lines.length > 1) {
+        lines.forEach(l => {
+          const w = ctx.measureText(l).width;
+          if (w > containerWidth) {
+            containerWidth = w;
+          }
+        });
+      } else {
+        containerWidth = textWidth;
+      }
+      
+      const offsetX = (containerWidth - textWidth) / 2;
+      ctx.fillText(line, startX + offsetX, startY + index * scaledLineHeight);
     });
   }
 }
 
 // 导出函数
-export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings = { 
+export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSettings, texts, exportSettings = { 
   doubleSided: true, 
   thickness: 2.0, 
   meshDensity: { density: 20 },
@@ -1281,7 +1317,7 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
   }
 }, options = {}) { // 接受新的options参数
   try {
-    const exporter = new BadgeOBJExporter(options); // 将options传给构造函数
+    const exporter = new BadgeOBJExporter({ for3DPrinting: options.for3DPrinting });
     
     // 1. 设置网格密度和质量
     exporter.setMeshDensity(exportSettings.meshDensity.density);
@@ -1291,11 +1327,17 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
     );
     
     if (options.for3DPrinting) {
-      exporter.textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings);
+      exporter.textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, texts, exportSettings);
     }
     
     // 2. 生成几何体 - 修正错误的函数调用
-    const objContent = exporter.generateBadgeOBJ(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings);
+    const { objContent, mtlContent, textureBlob } = await exporter.generateBadgeOBJ(
+      badgeSettings, 
+      holeSettings, 
+      imageSettings, 
+      texts, 
+      exportSettings
+    );
     
     await new Promise(resolve => setTimeout(resolve, 0)); // 确保UI更新
 
@@ -1317,16 +1359,13 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
     // 如果不是3D打印模式，则生成并下载MTL和纹理
     if (!options.for3DPrinting) {
       // 生成并下载MTL文件
-      const mtlContent = exporter.generateMTLContent();
+      const mtlContent = mtlContent || exporter.generateMTLContent();
       downloadFile(mtlContent, 'badge.mtl');
 
       // 生成并下载纹理图片
-      const textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, textSettings, exportSettings);
-      textureCanvas.toBlob(blob => {
-        if (blob) {
-          downloadFile(blob, 'badge_texture.png', 'image/png');
-        }
-      }, 'image/png');
+      if (textureBlob) {
+        downloadFile(textureBlob, 'badge_texture.png', 'image/png');
+      }
     }
 
     return { success: true, message: '模型已成功导出！' };
