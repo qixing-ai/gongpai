@@ -8,13 +8,18 @@
     "build": "webpack --mode production",
     "dev": "webpack serve --mode development --open"
   },
-  "keywords": ["react", "antd", "frontend"],
+  "keywords": [
+    "react",
+    "antd",
+    "frontend"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "antd": "^5.12.8",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "antd": "^5.12.8"
+    "use-local-storage-state": "^19.5.0"
   },
   "devDependencies": {
     "@babel/core": "^7.23.6",
@@ -28,4 +33,4 @@
     "webpack-cli": "^5.1.4",
     "webpack-dev-server": "^4.15.1"
   }
-} 
+}

@@ -15,6 +15,7 @@ import {
   CameraOutlined,
   PrinterOutlined,
 } from '@ant-design/icons';
+import useLocalStorageState from 'use-local-storage-state';
 import { BadgePreview, BadgeSettings, TextSettings } from '../components';
 import useInteraction from '../hooks/useInteraction';
 import { UNIT_CONFIG } from '../constants/unitConfig';
@@ -30,57 +31,67 @@ const BadgeDesigner = () => {
   };
 
   // 工牌设置 - 统一使用毫米(mm)
-  const [badgeSettings, setBadgeSettings] = useState({
-    width: 63,        // mm
-    height: 90,       // mm
-    backgroundColor: '#ffffff',
-    borderRadius: 5,  // mm
+  const [badgeSettings, setBadgeSettings, { removeItem: removeBadgeSettings }] = useLocalStorageState('badgeSettings', {
+    defaultValue: {
+      width: 63,        // mm
+      height: 90,       // mm
+      backgroundColor: '#ffffff',
+      borderRadius: 5,  // mm
+    }
   });
 
   // 穿孔设置 - 统一使用毫米(mm)
-  const [holeSettings, setHoleSettings] = useState({
-    enabled: false,
-    shape: 'circle',
-    size: 6,          // mm
-    offsetY: 1.5,       // mm
-    width: 6,         // mm
-    height: 4,        // mm
-    borderRadius: 2,  // mm
+  const [holeSettings, setHoleSettings, { removeItem: removeHoleSettings }] = useLocalStorageState('holeSettings', {
+    defaultValue: {
+      enabled: false,
+      shape: 'circle',
+      size: 6,          // mm
+      offsetY: 1.5,       // mm
+      width: 6,         // mm
+      height: 4,        // mm
+      borderRadius: 2,  // mm
+    }
   });
 
   // 图片设置 - 统一使用毫米(mm)
-  const [imageSettings, setImageSettings] = useState({
-    src: null,
-    width: 30,        // mm
-    height: 30,       // mm
-    x: 17,            // mm
-    y: 23,            // mm
-    opacity: 1,
+  const [imageSettings, setImageSettings, { removeItem: removeImageSettings }] = useLocalStorageState('imageSettings', {
+    defaultValue: {
+      src: null,
+      width: 30,        // mm
+      height: 30,       // mm
+      x: 17,            // mm
+      y: 23,            // mm
+      opacity: 1,
+    }
   });
 
   // 文字设置 - 统一使用毫米(mm)
-  const [textSettings, setTextSettings] = useState({
-    content: '张三\n技术部',
-    fontSize: 4,      // mm
-    color: '#000000',
-    fontFamily: 'Microsoft YaHei',
-    x: 26,            // mm
-    y: 68,            // mm
-    lineHeight: 1.4,
+  const [textSettings, setTextSettings, { removeItem: removeTextSettings }] = useLocalStorageState('textSettings', {
+    defaultValue: {
+      content: '张三\n技术部',
+      fontSize: 4,      // mm
+      color: '#000000',
+      fontFamily: 'Microsoft YaHei',
+      x: 26,            // mm
+      y: 68,            // mm
+      lineHeight: 1.4,
+    }
   });
 
   // 导出设置 - 统一使用毫米(mm)
-  const [exportSettings, setExportSettings] = useState({
-    doubleSided: true,    // 双面/单面
-    thickness: 2.0,       // 厚度 mm
-    textureResolution: 2048, // 贴图分辨率
-    meshDensity: {        // 网格密度设置
-      density: 200         // 正方形网格分段数
-    },
-    meshQuality: {        // 网格质量设置
-      enableBoundaryConnection: true,  // 是否启用边界连接
-      maxBoundaryConnections: 3,        // 最大边界连接数
-      enableRetopology: true          // 是否启用重拓扑优化
+  const [exportSettings, setExportSettings, { removeItem: removeExportSettings }] = useLocalStorageState('exportSettings', {
+    defaultValue: {
+      doubleSided: true,    // 双面/单面
+      thickness: 2.0,       // 厚度 mm
+      textureResolution: 2048, // 贴图分辨率
+      meshDensity: {        // 网格密度设置
+        density: 200         // 正方形网格分段数
+      },
+      meshQuality: {        // 网格质量设置
+        enableBoundaryConnection: true,  // 是否启用边界连接
+        maxBoundaryConnections: 3,        // 最大边界连接数
+        enableRetopology: true          // 是否启用重拓扑优化
+      }
     }
   });
 
@@ -153,51 +164,11 @@ const BadgeDesigner = () => {
 
   // 重置设计
   const resetDesign = () => {
-    setBadgeSettings({
-      width: formatSize(63),
-      height: formatSize(90),
-      backgroundColor: '#ffffff',
-      borderRadius: formatSize(5),
-    });
-    setHoleSettings({
-      enabled: false,
-      shape: 'circle',
-      size: formatSize(6),
-      offsetY: formatSize(1),
-      width: formatSize(6),
-      height: formatSize(4),
-      borderRadius: formatSize(2),
-    });
-    setImageSettings({
-      src: null,
-      width: formatSize(30),
-      height: formatSize(30),
-      x: formatSize(17),
-      y: formatSize(23),
-      opacity: formatSize(1, 1),
-    });
-    setTextSettings({
-      content: '张三\n技术部',
-      fontSize: formatSize(4),
-      color: '#000000',
-      fontFamily: 'Microsoft YaHei',
-      x: formatSize(26),
-      y: formatSize(68),
-      lineHeight: formatSize(1.4, 1),
-    });
-    setExportSettings({
-      doubleSided: true,
-      thickness: formatSize(2.0, 1),
-      textureResolution: 2048,
-      meshDensity: {
-        density: 200
-      },
-      meshQuality: {
-        enableBoundaryConnection: true,
-        maxBoundaryConnections: 3,
-        enableRetopology: true
-      }
-    });
+    removeBadgeSettings();
+    removeHoleSettings();
+    removeImageSettings();
+    removeTextSettings();
+    removeExportSettings();
     setSelectedElement(null);
     message.success('设计已重置');
   };
