@@ -43,7 +43,7 @@ const BadgeDesigner = () => {
   // 穿孔设置 - 统一使用毫米(mm)
   const [holeSettings, setHoleSettings, { removeItem: removeHoleSettings }] = useLocalStorageState('holeSettings', {
     defaultValue: {
-      enabled: false,
+      enabled: true,
       shape: 'circle',
       size: 6,          // mm
       offsetY: 1.5,       // mm
