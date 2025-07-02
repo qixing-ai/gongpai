@@ -13,7 +13,7 @@ const TextSettings = ({
   formatSize
 }) => {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', height: '100%' }}>
       {/* 文字设置 */}
       <Card 
         title="文字设置" 
@@ -21,7 +21,7 @@ const TextSettings = ({
         style={{ flex: 1 }}
         styles={{ body: { padding: '8px' } }}
       >
-        <Space direction="vertical" style={{ width: '100%' }} size={4}>
+        <Space direction="vertical" style={{ width: '100%' }} size={2}>
           <div>
             <Text>文字内容</Text>
             <Input.TextArea
@@ -109,7 +109,7 @@ const TextSettings = ({
         style={{ flex: 'none' }}
         styles={{ body: { padding: '8px' } }}
       >
-        <Space direction="vertical" style={{ width: '100%' }} size={4}>
+        <Space direction="vertical" style={{ width: '100%' }} size={2}>
           <div>
             <Text>模型类型</Text>
             <Radio.Group

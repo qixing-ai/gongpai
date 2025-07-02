@@ -35,11 +35,11 @@ const BadgeSettings = ({
       style={{ height: '100%', overflowY: 'auto' }}
       styles={{ body: { padding: '8px' } }}
     >
-      <Space direction="vertical" style={{ width: '100%' }} size={4}>
+      <Space direction="vertical" style={{ width: '100%' }} size={2}>
         {/* 工牌尺寸设置 */}
-        <div style={{ marginBottom: 8 }}>
+        <div style={{ marginBottom: 4 }}>
           <Text strong style={{ fontSize: '13px', marginBottom: 4, display: 'block' }}>工牌尺寸</Text>
-          <Space direction="vertical" style={{ width: '100%' }} size="small">
+          <Space direction="vertical" style={{ width: '100%' }} size={4}>
             <div>
               <Text>宽度: {formatSize(badgeSettings.width)}mm</Text>
               <Slider
@@ -86,9 +86,9 @@ const BadgeSettings = ({
         </div>
 
         {/* 穿孔设置 */}
-        <div style={{ marginBottom: 8 }}>
+        <div style={{ marginBottom: 4 }}>
           <Text strong style={{ fontSize: '13px', marginBottom: 4, display: 'block' }}>穿孔设置</Text>
-          <Space direction="vertical" style={{ width: '100%' }} size="small">
+          <Space direction="vertical" style={{ width: '100%' }} size={4}>
             <Radio.Group
               value={holeSettings.enabled}
               onChange={(e) => {
@@ -192,7 +192,7 @@ const BadgeSettings = ({
         {/* 图片设置 */}
         <div>
           <Text strong style={{ fontSize: '13px', marginBottom: 4, display: 'block' }}>图片设置</Text>
-          <Space direction="vertical" style={{ width: '100%' }} size="small">
+          <Space direction="vertical" style={{ width: '100%' }} size={4}>
             <Upload
               accept="image/*"
               showUploadList={false}
