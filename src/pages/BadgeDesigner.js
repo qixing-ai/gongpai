@@ -68,7 +68,7 @@ const BadgeDesigner = () => {
   // 文字设置 - 统一使用毫米(mm)
   const [textSettings, setTextSettings, { removeItem: removeTextSettings }] = useLocalStorageState('textSettings', {
     defaultValue: {
-      content: '张三\n技术部',
+      content: 'XX\nXXX部',
       fontSize: 4,      // mm
       color: '#000000',
       fontFamily: 'Microsoft YaHei',
