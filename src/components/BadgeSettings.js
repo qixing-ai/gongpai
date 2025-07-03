@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Card, Space, Slider, Select, Upload, Button, ColorPicker, Radio, Row, Col, InputNumber, Typography, message } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 
@@ -15,14 +15,64 @@ const BadgeSettings = ({
   UNIT_CONFIG,
   formatSize
 }) => {
+  useEffect(() => {
+    if (imageSettings.src && !imageSettings.aspectRatio) {
+      const img = new window.Image();
+      img.onload = () => {
+        const aspectRatio = img.width / img.height;
+        setImageSettings(prev => ({
+          ...prev,
+          height: formatSize(prev.width / aspectRatio),
+          aspectRatio: aspectRatio,
+        }));
+      };
+      img.src = imageSettings.src;
+    }
+  }, [imageSettings.src, imageSettings.aspectRatio, setImageSettings, formatSize]);
+
+  const handleWidthChange = (value) => {
+    const newWidth = formatSize(value || 0);
+    setImageSettings(prev => {
+      const newSettings = { ...prev, width: newWidth };
+      if (prev.aspectRatio) {
+        newSettings.height = formatSize(newWidth / prev.aspectRatio);
+      }
+      return newSettings;
+    });
+  };
+
+  const handleHeightChange = (value) => {
+    const newHeight = formatSize(value || 0);
+    setImageSettings(prev => {
+      const newSettings = { ...prev, height: newHeight };
+      if (prev.aspectRatio) {
+        newSettings.width = formatSize(newHeight * prev.aspectRatio);
+      }
+      return newSettings;
+    });
+  };
+
   // 处理图片上传
   const handleImageUpload = (info) => {
     const file = info.file.originFileObj || info.file;
     if (file) {
       const reader = new FileReader();
       reader.onload = (e) => {
-        setImageSettings(prev => ({ ...prev, src: e.target.result }));
-        message.success('图片上传成功');
+        const imgSrc = e.target.result;
+        const img = new window.Image();
+        img.onload = () => {
+          const aspectRatio = img.width / img.height;
+          const newWidth = 30; // Default width in mm
+          setImageSettings(prev => ({
+            ...prev,
+            src: imgSrc,
+            width: newWidth,
+            height: formatSize(newWidth / aspectRatio),
+            aspectRatio,
+          }));
+          message.success('图片上传成功');
+        };
+        img.src = imgSrc;
       };
       reader.readAsDataURL(file);
     }
@@ -327,7 +377,7 @@ const BadgeSettings = ({
                       max={UNIT_CONFIG.IMAGE.SIZE.max}
                       step={UNIT_CONFIG.IMAGE.SIZE.step}
                       value={imageSettings.width}
-                      onChange={(value) => setImageSettings(prev => ({ ...prev, width: formatSize(value) }))}
+                      onChange={handleWidthChange}
                       size="small"
                     />
                   </Col>
@@ -337,7 +387,7 @@ const BadgeSettings = ({
                       max={UNIT_CONFIG.IMAGE.SIZE.max}
                       step={UNIT_CONFIG.IMAGE.SIZE.step}
                       value={imageSettings.width}
-                      onChange={(value) => setImageSettings(prev => ({ ...prev, width: formatSize(value || 0) }))}
+                      onChange={handleWidthChange}
                       style={{ width: '100%' }}
                       size="small"
                     />
@@ -351,7 +401,7 @@ const BadgeSettings = ({
                       max={UNIT_CONFIG.IMAGE.SIZE.max}
                       step={UNIT_CONFIG.IMAGE.SIZE.step}
                       value={imageSettings.height}
-                      onChange={(value) => setImageSettings(prev => ({ ...prev, height: formatSize(value) }))}
+                      onChange={handleHeightChange}
                       size="small"
                     />
                   </Col>
@@ -361,7 +411,7 @@ const BadgeSettings = ({
                       max={UNIT_CONFIG.IMAGE.SIZE.max}
                       step={UNIT_CONFIG.IMAGE.SIZE.step}
                       value={imageSettings.height}
-                      onChange={(value) => setImageSettings(prev => ({ ...prev, height: formatSize(value || 0) }))}
+                      onChange={handleHeightChange}
                       style={{ width: '100%' }}
                       size="small"
                     />

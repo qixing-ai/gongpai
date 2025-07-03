@@ -130,14 +130,29 @@ const useInteraction = (
     } else if (type === 'resize-image') {
       let newWidth = startValues.width;
       let newHeight = startValues.height;
-      
-      if (resizeType === 'width' || resizeType === 'corner') {
-        newWidth = validateSize(startValues.width + deltaX, UNIT_CONFIG.IMAGE.SIZE);
+
+      if (imageSettings.aspectRatio) {
+        if (resizeType === 'corner') {
+          // 优先根据X轴变化计算，也可以选择Y轴或者两者组合
+          newWidth = validateSize(startValues.width + deltaX, UNIT_CONFIG.IMAGE.SIZE);
+          newHeight = formatSize(newWidth / imageSettings.aspectRatio);
+        } else if (resizeType === 'width') {
+          newWidth = validateSize(startValues.width + deltaX, UNIT_CONFIG.IMAGE.SIZE);
+          newHeight = formatSize(newWidth / imageSettings.aspectRatio);
+        } else if (resizeType === 'height') {
+          newHeight = validateSize(startValues.height + deltaY, UNIT_CONFIG.IMAGE.SIZE);
+          newWidth = formatSize(newHeight * imageSettings.aspectRatio);
+        }
+      } else {
+        // Fallback for images without aspectRatio
+        if (resizeType === 'width' || resizeType === 'corner') {
+          newWidth = validateSize(startValues.width + deltaX, UNIT_CONFIG.IMAGE.SIZE);
+        }
+        if (resizeType === 'height' || resizeType === 'corner') {
+          newHeight = validateSize(startValues.height + deltaY, UNIT_CONFIG.IMAGE.SIZE);
+        }
       }
-      if (resizeType === 'height' || resizeType === 'corner') {
-        newHeight = validateSize(startValues.height + deltaY, UNIT_CONFIG.IMAGE.SIZE);
-      }
-      
+
       setImageSettings(prev => ({ ...prev, width: newWidth, height: newHeight }));
     } else if (type === 'resize-hole') {
       if (resizeType === 'size') {
