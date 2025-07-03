@@ -7,6 +7,14 @@ export class BadgeOBJExporter {
     this.vertexIndex = 1;
     this.texturePixelData = null; // 缓存纹理像素数据
 
+    // 新增：自适应细分相关设置
+    this.edgeMap = null; // 边缘强度图
+    this.subdivision = {
+      enabled: true, // 是否启用
+      threshold: 0.15, // 边缘强度阈值，超过则细分
+      maxDepth: 2,     // 最大细分深度
+    };
+
     // 3D打印模式设置
     this.for3DPrinting = options.for3DPrinting || false;
     this.textureCanvas = options.textureCanvas || null; // 传入纹理画布
@@ -1060,6 +1068,11 @@ export class BadgeOBJExporter {
     const thickness = exportSettings.thickness;
     const doubleSided = exportSettings.doubleSided;
 
+    // 在生成任何几何体之前创建边缘图
+    if (this.subdivision.enabled && this.textureCanvas) {
+      this.createEdgeMap();
+    }
+
     // 创建外轮廓
     const outerPoints = this.createPoints('rectangle', { width, height, borderRadius });
     const outer = this.createVerticesAndUVs(outerPoints, thickness, width, height, doubleSided);
@@ -1078,6 +1091,9 @@ export class BadgeOBJExporter {
     }
 
     this.generateFaces(outer.vertices, outer.uvs, outerPoints.length, holeInfo, thickness, badgeSettings);
+
+    // 在生成OBJ内容之前，执行自适应细分
+    this.performAdaptiveSubdivision();
 
     // 生成OBJ文件内容
     let obj = '';
@@ -1303,6 +1319,168 @@ export class BadgeOBJExporter {
       const offsetX = (containerWidth - textWidth) / 2;
       ctx.fillText(line, startX + offsetX, startY + index * scaledLineHeight);
     });
+  }
+
+  // 新增：计算三角形面积（用于细分决策）
+  calculateTriangleArea(v1, v2, v3) {
+    // 使用向量叉乘计算面积
+    const AB = { x: v2.x - v1.x, y: v2.y - v1.y, z: v2.z - v1.z };
+    const AC = { x: v3.x - v1.x, y: v3.y - v1.y, z: v3.z - v1.z };
+    const crossProduct = {
+      x: AB.y * AC.z - AB.z * AC.y,
+      y: AB.z * AC.x - AB.x * AC.z,
+      z: AB.x * AC.y - AB.y * AC.x,
+    };
+    return 0.5 * Math.sqrt(crossProduct.x**2 + crossProduct.y**2 + crossProduct.z**2);
+  }
+
+  // 新增：根据UV坐标从边缘图中获取强度值
+  getEdgeIntensity(u, v) {
+    if (!this.edgeMap) return 0;
+    
+    const x = Math.floor(u * (this.edgeMap.width - 1));
+    const y = Math.floor(v * (this.edgeMap.height - 1));
+    const index = y * this.edgeMap.width + x;
+
+    return this.edgeMap.data[index] || 0;
+  }
+  
+  // 新增：创建边缘图（使用Sobel算子）
+  createEdgeMap() {
+    if (!this.textureCanvas) return;
+    
+    const ctx = this.textureCanvas.getContext('2d', { willReadFrequently: true });
+    const imageData = ctx.getImageData(0, 0, this.textureCanvas.width, this.textureCanvas.height);
+    const width = imageData.width;
+    const height = imageData.height;
+    
+    const grayscale = new Float32Array(width * height);
+    const edgeData = new Float32Array(width * height);
+    
+    // 1. 转为灰度图
+    for (let i = 0; i < imageData.data.length; i += 4) {
+      const r = imageData.data[i];
+      const g = imageData.data[i + 1];
+      const b = imageData.data[i + 2];
+      grayscale[i / 4] = 0.299 * r + 0.587 * g + 0.114 * b;
+    }
+    
+    const sobelX = [
+      [-1, 0, 1],
+      [-2, 0, 2],
+      [-1, 0, 1]
+    ];
+    const sobelY = [
+      [-1, -2, -1],
+      [0, 0, 0],
+      [1, 2, 1]
+    ];
+    
+    let maxGradient = 0;
+
+    // 2. 应用Sobel算子计算梯度
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        let gx = 0;
+        let gy = 0;
+        
+        for (let j = -1; j <= 1; j++) {
+          for (let i = -1; i <= 1; i++) {
+            const pixel = grayscale[(y + j) * width + (x + i)];
+            gx += pixel * sobelX[j + 1][i + 1];
+            gy += pixel * sobelY[j + 1][i + 1];
+          }
+        }
+        
+        const gradient = Math.sqrt(gx * gx + gy * gy);
+        const index = y * width + x;
+        edgeData[index] = gradient;
+        
+        if (gradient > maxGradient) {
+          maxGradient = gradient;
+        }
+      }
+    }
+    
+    // 3. 归一化
+    if (maxGradient > 0) {
+      for (let i = 0; i < edgeData.length; i++) {
+        edgeData[i] /= maxGradient;
+      }
+    }
+    
+    this.edgeMap = {
+      data: edgeData,
+      width: width,
+      height: height,
+    };
+  }
+
+  // 新增：自适应细分总控函数
+  performAdaptiveSubdivision() {
+    if (!this.edgeMap || !this.subdivision.enabled) return;
+
+    const facesToProcess = [...this.faces];
+    this.faces = []; // 重置面数组，后面将填充细分后的结果
+
+    for (const face of facesToProcess) {
+      this.subdivideFaceRecursively(face, 0);
+    }
+  }
+
+  // 新增：递归细分单个面
+  subdivideFaceRecursively(face, depth) {
+    const [v1_idx, v2_idx, v3_idx] = face.vertices;
+    const [uv1_idx, uv2_idx, uv3_idx] = face.uvs;
+    
+    const uv1 = this.uvs[uv1_idx - 1];
+    const uv2 = this.uvs[uv2_idx - 1];
+    const uv3 = this.uvs[uv3_idx - 1];
+    
+    // 使用三角形UV中心点的边缘强度作为判断依据
+    const centroid_u = (uv1.u + uv2.u + uv3.u) / 3;
+    const centroid_v = (uv1.v + uv2.v + uv3.v) / 3;
+    const edgeIntensity = this.getEdgeIntensity(centroid_u, centroid_v);
+
+    if (depth < this.subdivision.maxDepth && edgeIntensity > this.subdivision.threshold) {
+      const v1 = this.vertices[v1_idx - 1];
+      const v2 = this.vertices[v2_idx - 1];
+      const v3 = this.vertices[v3_idx - 1];
+      
+      // 计算三条边的中点
+      const m12_pos = { x: (v1.x + v2.x) / 2, y: (v1.y + v2.y) / 2, z: (v1.z + v2.z) / 2 };
+      const m23_pos = { x: (v2.x + v3.x) / 2, y: (v2.y + v3.y) / 2, z: (v2.z + v3.z) / 2 };
+      const m31_pos = { x: (v3.x + v1.x) / 2, y: (v3.y + v1.y) / 2, z: (v3.z + v1.z) / 2 };
+
+      const m12_uv = { u: (uv1.u + uv2.u) / 2, v: (uv1.v + uv2.v) / 2 };
+      const m23_uv = { u: (uv2.u + uv3.u) / 2, v: (uv2.v + uv3.v) / 2 };
+      const m31_uv = { u: (uv3.u + uv1.u) / 2, v: (uv3.v + uv1.v) / 2 };
+      
+      // 添加新的顶点和UV
+      const m12_v_idx = this.addVertex(m12_pos.x, m12_pos.y, m12_pos.z);
+      const m23_v_idx = this.addVertex(m23_pos.x, m23_pos.y, m23_pos.z);
+      const m31_v_idx = this.addVertex(m31_pos.x, m31_pos.y, m31_pos.z);
+
+      const m12_uv_idx = this.addUV(m12_uv.u, m12_uv.v);
+      const m23_uv_idx = this.addUV(m23_uv.u, m23_uv.v);
+      const m31_uv_idx = this.addUV(m31_uv.u, m31_uv.v);
+
+      if (this.for3DPrinting) {
+        this.updateVertexColor(m12_v_idx, m12_uv.u, m12_uv.v);
+        this.updateVertexColor(m23_v_idx, m23_uv.u, m23_uv.v);
+        this.updateVertexColor(m31_v_idx, m31_uv.u, m31_uv.v);
+      }
+      
+      // 递归细分4个新创建的三角形
+      this.subdivideFaceRecursively({ vertices: [v1_idx, m12_v_idx, m31_v_idx], uvs: [uv1_idx, m12_uv_idx, m31_uv_idx] }, depth + 1);
+      this.subdivideFaceRecursively({ vertices: [m12_v_idx, v2_idx, m23_v_idx], uvs: [m12_uv_idx, uv2_idx, m23_uv_idx] }, depth + 1);
+      this.subdivideFaceRecursively({ vertices: [m31_v_idx, m23_v_idx, v3_idx], uvs: [m31_uv_idx, m23_uv_idx, uv3_idx] }, depth + 1);
+      this.subdivideFaceRecursively({ vertices: [m12_v_idx, m23_v_idx, m31_v_idx], uvs: [m12_uv_idx, m23_uv_idx, m31_uv_idx] }, depth + 1);
+      
+    } else {
+      // 如果不满足细分条件，则直接将当前面加入最终列表
+      this.faces.push(face);
+    }
   }
 }
 
