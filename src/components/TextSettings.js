@@ -305,9 +305,10 @@ const TextSettings = ({
                 style={{ width: '100%' }}
                 size="small"
               >
-                <Select.Option value={1024}>1024px (标准)</Select.Option>
-                <Select.Option value={2048}>2048px (高清)</Select.Option>
-                <Select.Option value={4096}>4096px (超清)</Select.Option>
+                <Select.Option value={1024}>1024x1024</Select.Option>
+                <Select.Option value={2048}>2048x2048</Select.Option>
+                <Select.Option value={4096}>4096x4096 (高)</Select.Option>
+                <Select.Option value={8192}>8192x8192 (极高)</Select.Option>
               </Select>
             </Col>
           </Row>

@@ -84,7 +84,7 @@ const BadgeDesigner = () => {
     defaultValue: {
       doubleSided: true,    // 双面/单面
       thickness: 2.0,       // 厚度 mm
-      textureResolution: 2048, // 贴图分辨率
+      textureResolution: 8192, // 贴图分辨率
       meshDensity: {        // 网格密度设置
         density: 500         // 正方形网格分段数
       },
