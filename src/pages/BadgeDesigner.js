@@ -92,6 +92,11 @@ const BadgeDesigner = () => {
         enableBoundaryConnection: true,  // 是否启用边界连接
         maxBoundaryConnections: 3,        // 最大边界连接数
         enableRetopology: true          // 是否启用重拓扑优化
+      },
+      subdivision: {        // 自适应细分设置
+        enabled: true,      // 是否启用自适应细分
+        threshold: 0.05,    // 边缘强度阈值
+        maxDepth: 5         // 最大细分深度
       }
     }
   });

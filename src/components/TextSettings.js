@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Space, Slider, Select, ColorPicker, Input, Typography, Radio, Row, Col, InputNumber, Button, Empty } from 'antd';
+import { Card, Space, Slider, Select, ColorPicker, Input, Typography, Radio, Row, Col, InputNumber, Button, Empty, Checkbox } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -267,9 +267,9 @@ const TextSettings = ({
             <Col span={6}><Text>网格密度</Text></Col>
             <Col span={12}>
               <Slider
-                min={200}
+                min={20}
                 max={1500}
-                step={100}
+                step={10}
                 value={exportSettings.meshDensity?.density || 500}
                 onChange={(value) => setExportSettings(prev => ({
                   ...prev,
@@ -280,13 +280,13 @@ const TextSettings = ({
             </Col>
             <Col span={6}>
               <InputNumber
-                  min={200}
+                  min={20}
                   max={1500}
-                  step={100}
+                  step={10}
                   value={exportSettings.meshDensity?.density || 500}
                   onChange={(value) => setExportSettings(prev => ({
                     ...prev,
-                    meshDensity: { density: value || 200 }
+                    meshDensity: { density: value || 20 }
                   }))}
                   size="small"
                   style={{ width: '100%' }}
@@ -315,6 +315,93 @@ const TextSettings = ({
           <Text style={{ fontSize: '11px', color: '#666' }}>
             更高的分辨率会带来更清晰的纹理，但会增加文件大小。
           </Text>
+          
+          {/* 自适应细分设置 */}
+          <div>
+            <Text>自适应细分</Text>
+            <div style={{ marginTop: 4 }}>
+              <Checkbox
+                checked={exportSettings.subdivision?.enabled !== false}
+                onChange={(e) => setExportSettings(prev => ({
+                  ...prev,
+                  subdivision: { ...prev.subdivision, enabled: e.target.checked }
+                }))}
+                size="small"
+              >
+                启用自适应细分
+              </Checkbox>
+            </div>
+          </div>
+          
+          {exportSettings.subdivision?.enabled !== false && (
+            <>
+              <Row align="middle" gutter={8}>
+                <Col span={8}><Text>边缘阈值</Text></Col>
+                <Col span={10}>
+                  <Slider
+                    min={0.01}
+                    max={0.2}
+                    step={0.01}
+                    value={exportSettings.subdivision?.threshold || 0.05}
+                    onChange={(value) => setExportSettings(prev => ({
+                      ...prev,
+                      subdivision: { ...prev.subdivision, threshold: value }
+                    }))}
+                    size="small"
+                  />
+                </Col>
+                <Col span={6}>
+                  <InputNumber
+                    min={0.01}
+                    max={0.2}
+                    step={0.01}
+                    value={exportSettings.subdivision?.threshold || 0.05}
+                    onChange={(value) => setExportSettings(prev => ({
+                      ...prev,
+                      subdivision: { ...prev.subdivision, threshold: value || 0.05 }
+                    }))}
+                    size="small"
+                    style={{ width: '100%' }}
+                  />
+                </Col>
+              </Row>
+              
+              <Row align="middle" gutter={8}>
+                <Col span={8}><Text>最大深度</Text></Col>
+                <Col span={10}>
+                  <Slider
+                    min={1}
+                    max={8}
+                    step={1}
+                    value={exportSettings.subdivision?.maxDepth || 5}
+                    onChange={(value) => setExportSettings(prev => ({
+                      ...prev,
+                      subdivision: { ...prev.subdivision, maxDepth: value }
+                    }))}
+                    size="small"
+                  />
+                </Col>
+                <Col span={6}>
+                  <InputNumber
+                    min={1}
+                    max={8}
+                    step={1}
+                    value={exportSettings.subdivision?.maxDepth || 5}
+                    onChange={(value) => setExportSettings(prev => ({
+                      ...prev,
+                      subdivision: { ...prev.subdivision, maxDepth: value || 5 }
+                    }))}
+                    size="small"
+                    style={{ width: '100%' }}
+                  />
+                </Col>
+              </Row>
+              
+              <Text style={{ fontSize: '11px', color: '#666' }}>
+                阈值越低，细分越密集。深度越大，细分层次越多。
+              </Text>
+            </>
+          )}
         </Space>
       </Card>
     </div>

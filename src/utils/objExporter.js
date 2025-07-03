@@ -11,8 +11,8 @@ export class BadgeOBJExporter {
     this.edgeMap = null; // 边缘强度图
     this.subdivision = {
       enabled: true, // 是否启用
-      threshold: 0.15, // 边缘强度阈值，超过则细分
-      maxDepth: 2,     // 最大细分深度
+      threshold: 0.05, // 边缘强度阈值，超过则细分
+      maxDepth: 5,     // 最大细分深度
     };
 
     // 3D打印模式设置
@@ -40,6 +40,15 @@ export class BadgeOBJExporter {
     this.meshQuality = { 
       enableBoundaryConnection, 
       maxBoundaryConnections,
+    };
+  }
+
+  // 设置自适应细分参数
+  setSubdivisionSettings(enabled = true, threshold = 0.05, maxDepth = 5) {
+    this.subdivision = {
+      enabled,
+      threshold,
+      maxDepth
     };
   }
 
@@ -1334,18 +1343,47 @@ export class BadgeOBJExporter {
     return 0.5 * Math.sqrt(crossProduct.x**2 + crossProduct.y**2 + crossProduct.z**2);
   }
 
-  // 新增：根据UV坐标从边缘图中获取强度值
+
+
+  // 新增：根据UV坐标从边缘图中获取强度值（使用双线性插值）
   getEdgeIntensity(u, v) {
     if (!this.edgeMap) return 0;
-    
-    const x = Math.floor(u * (this.edgeMap.width - 1));
-    const y = Math.floor(v * (this.edgeMap.height - 1));
-    const index = y * this.edgeMap.width + x;
 
-    return this.edgeMap.data[index] || 0;
+    const w = this.edgeMap.width;
+    const h = this.edgeMap.height;
+
+    // 将UV坐标映射到像素坐标，并确保不越界
+    const texX = Math.max(0, Math.min(u * w, w - 1));
+    const texY = Math.max(0, Math.min(v * h, h - 1));
+
+    const x1 = Math.floor(texX);
+    const y1 = Math.floor(texY);
+
+    // 双线性插值需要4个点
+    const x2 = Math.min(x1 + 1, w - 1);
+    const y2 = Math.min(y1 + 1, h - 1);
+
+    // 计算插值因子
+    const fx = texX - x1;
+    const fy = texY - y1;
+
+    // 从边缘图中获取4个点的强度值
+    const c11 = this.edgeMap.data[y1 * w + x1] || 0;
+    const c21 = this.edgeMap.data[y1 * w + x2] || 0;
+    const c12 = this.edgeMap.data[y2 * w + x1] || 0;
+    const c22 = this.edgeMap.data[y2 * w + x2] || 0;
+
+    const lerp = (a, b, t) => a * (1 - t) + b * t;
+
+    // 在X方向上插值
+    const top = lerp(c11, c21, fx);
+    const bottom = lerp(c12, c22, fx);
+
+    // 在Y方向上插值
+    return lerp(top, bottom, fy);
   }
   
-  // 新增：创建边缘图（使用Sobel算子）
+  // 新增：创建边缘图（多尺度、多算子边缘检测）
   createEdgeMap() {
     if (!this.textureCanvas) return;
     
@@ -1355,65 +1393,277 @@ export class BadgeOBJExporter {
     const height = imageData.height;
     
     const grayscale = new Float32Array(width * height);
-    const edgeData = new Float32Array(width * height);
     
-    // 1. 转为灰度图
+    // 1. 转为灰度图（使用更精确的权重）
     for (let i = 0; i < imageData.data.length; i += 4) {
       const r = imageData.data[i];
       const g = imageData.data[i + 1];
       const b = imageData.data[i + 2];
-      grayscale[i / 4] = 0.299 * r + 0.587 * g + 0.114 * b;
+      const a = imageData.data[i + 3];
+      // 考虑透明度，透明区域视为背景
+      const alpha = a / 255.0;
+      grayscale[i / 4] = (0.299 * r + 0.587 * g + 0.114 * b) * alpha + 255 * (1 - alpha);
     }
     
-    const sobelX = [
-      [-1, 0, 1],
-      [-2, 0, 2],
-      [-1, 0, 1]
-    ];
-    const sobelY = [
-      [-1, -2, -1],
-      [0, 0, 0],
-      [1, 2, 1]
-    ];
+    // 2. 多尺度边缘检测
+    const edgeResults = this._multiScaleEdgeDetection(grayscale, width, height);
     
-    let maxGradient = 0;
+    // 3. 非最大值抑制，提高边缘精度
+    const suppressedEdges = this._nonMaximumSuppression(edgeResults.magnitude, edgeResults.direction, width, height);
+    
+    // 4. 双阈值处理和边缘连接
+    const finalEdges = this._doubleThresholdAndConnect(suppressedEdges, width, height);
+    
+    // 5. 计算统计信息
+    const validEdges = finalEdges.filter(v => v > 0);
+    validEdges.sort((a, b) => a - b);
+    const median = validEdges.length > 0 ? validEdges[Math.floor(validEdges.length / 2)] : 0;
+    const p75 = validEdges.length > 0 ? validEdges[Math.floor(validEdges.length * 0.75)] : 0;
+    const p90 = validEdges.length > 0 ? validEdges[Math.floor(validEdges.length * 0.90)] : 0;
+    const maxEdge = validEdges.length > 0 ? validEdges[validEdges.length - 1] : 1;
+    
+    this.edgeMap = {
+      data: finalEdges,
+      width: width,
+      height: height,
+      stats: { 
+        median: median / maxEdge, 
+        p75: p75 / maxEdge, 
+        p90: p90 / maxEdge,
+        maxEdge: maxEdge
+      }
+    };
+  }
 
-    // 2. 应用Sobel算子计算梯度
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        let gx = 0;
-        let gy = 0;
+  // 新增：多尺度边缘检测
+  _multiScaleEdgeDetection(grayscale, width, height) {
+    const magnitude = new Float32Array(width * height);
+    const direction = new Float32Array(width * height);
+    
+    // Sobel算子（适合检测强边缘）
+    const sobelX = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]];
+    const sobelY = [[-1, -2, -1], [0, 0, 0], [1, 2, 1]];
+    
+    // Prewitt算子（适合检测弱边缘）
+    const prewittX = [[-1, 0, 1], [-1, 0, 1], [-1, 0, 1]];
+    const prewittY = [[-1, -1, -1], [0, 0, 0], [1, 1, 1]];
+    
+    // Roberts算子（适合检测细节边缘）- 更锐利
+    const robertsX = [[1, 0], [0, -1]];
+    const robertsY = [[0, 1], [-1, 0]];
+    
+    // Scharr算子（比Sobel更精确的边缘检测）
+    const scharrX = [[-3, 0, 3], [-10, 0, 10], [-3, 0, 3]];
+    const scharrY = [[-3, -10, -3], [0, 0, 0], [3, 10, 3]];
+    
+    for (let y = 2; y < height - 2; y++) {
+      for (let x = 2; x < width - 2; x++) {
+        const idx = y * width + x;
         
+        // 1. Sobel检测
+        let sobelGx = 0, sobelGy = 0;
         for (let j = -1; j <= 1; j++) {
           for (let i = -1; i <= 1; i++) {
             const pixel = grayscale[(y + j) * width + (x + i)];
-            gx += pixel * sobelX[j + 1][i + 1];
-            gy += pixel * sobelY[j + 1][i + 1];
+            sobelGx += pixel * sobelX[j + 1][i + 1];
+            sobelGy += pixel * sobelY[j + 1][i + 1];
           }
         }
+        const sobelMag = Math.sqrt(sobelGx * sobelGx + sobelGy * sobelGy);
         
-        const gradient = Math.sqrt(gx * gx + gy * gy);
-        const index = y * width + x;
-        edgeData[index] = gradient;
+        // 2. Scharr检测（更精确）
+        let scharrGx = 0, scharrGy = 0;
+        for (let j = -1; j <= 1; j++) {
+          for (let i = -1; i <= 1; i++) {
+            const pixel = grayscale[(y + j) * width + (x + i)];
+            scharrGx += pixel * scharrX[j + 1][i + 1];
+            scharrGy += pixel * scharrY[j + 1][i + 1];
+          }
+        }
+        const scharrMag = Math.sqrt(scharrGx * scharrGx + scharrGy * scharrGy);
         
-        if (gradient > maxGradient) {
-          maxGradient = gradient;
+        // 3. Roberts检测（最锐利）
+        let robertsGx = 0, robertsGy = 0;
+        for (let j = 0; j < 2; j++) {
+          for (let i = 0; i < 2; i++) {
+            const pixel = grayscale[(y + j) * width + (x + i)];
+            robertsGx += pixel * robertsX[j][i];
+            robertsGy += pixel * robertsY[j][i];
+          }
+        }
+        const robertsMag = Math.sqrt(robertsGx * robertsGx + robertsGy * robertsGy);
+        
+        // 4. Prewitt检测
+        let prewittGx = 0, prewittGy = 0;
+        for (let j = -1; j <= 1; j++) {
+          for (let i = -1; i <= 1; i++) {
+            const pixel = grayscale[(y + j) * width + (x + i)];
+            prewittGx += pixel * prewittX[j + 1][i + 1];
+            prewittGy += pixel * prewittY[j + 1][i + 1];
+          }
+        }
+        const prewittMag = Math.sqrt(prewittGx * prewittGx + prewittGy * prewittGy);
+        
+        // 5. 锐利的多尺度检测：使用更小、更精确的核
+        let sharpGx = 0, sharpGy = 0;
+        const sharpKernel = [
+          [-1, 0, 1],
+          [-3, 0, 3],
+          [-1, 0, 1]
+        ];
+        for (let j = -1; j <= 1; j++) {
+          for (let i = -1; i <= 1; i++) {
+            const pixel = grayscale[(y + j) * width + (x + i)];
+            sharpGx += pixel * sharpKernel[j + 1][i + 1];
+            sharpGy += pixel * sharpKernel[i + 1][j + 1]; // 转置
+          }
+        }
+        const sharpMag = Math.sqrt(sharpGx * sharpGx + sharpGy * sharpGy);
+        
+        // 6. 组合检测器结果，重新分配权重以增强锐利度
+        const combinedMag = (
+          sobelMag * 0.25 +       // 降低Sobel权重
+          scharrMag * 0.35 +      // 增加Scharr权重（更精确）
+          robertsMag * 0.25 +     // 增加Roberts权重（最锐利）
+          prewittMag * 0.05 +     // 降低Prewitt权重
+          sharpMag * 0.10         // 添加锐利核
+        );
+        magnitude[idx] = combinedMag;
+        
+        // 7. 计算梯度方向（基于最强的检测器）
+        let finalGx, finalGy;
+        if (scharrMag >= sobelMag && scharrMag >= robertsMag) {
+          finalGx = scharrGx;
+          finalGy = scharrGy;
+        } else if (robertsMag >= sobelMag) {
+          finalGx = robertsGx;
+          finalGy = robertsGy;
+        } else {
+          finalGx = sobelGx;
+          finalGy = sobelGy;
+        }
+        direction[idx] = Math.atan2(finalGy, finalGx);
+      }
+    }
+    
+    return { magnitude, direction };
+  }
+
+  // 新增：非最大值抑制
+  _nonMaximumSuppression(magnitude, direction, width, height) {
+    const suppressed = new Float32Array(width * height);
+    
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = y * width + x;
+        const mag = magnitude[idx];
+        const angle = direction[idx];
+        
+        // 将角度转换为0-180度
+        let degree = (angle * 180 / Math.PI + 180) % 180;
+        
+        let neighbor1, neighbor2;
+        
+        // 根据梯度方向确定邻居像素
+        if ((degree >= 0 && degree < 22.5) || (degree >= 157.5 && degree <= 180)) {
+          // 水平方向
+          neighbor1 = magnitude[y * width + (x - 1)];
+          neighbor2 = magnitude[y * width + (x + 1)];
+        } else if (degree >= 22.5 && degree < 67.5) {
+          // 对角线方向（右上-左下）
+          neighbor1 = magnitude[(y - 1) * width + (x + 1)];
+          neighbor2 = magnitude[(y + 1) * width + (x - 1)];
+        } else if (degree >= 67.5 && degree < 112.5) {
+          // 垂直方向
+          neighbor1 = magnitude[(y - 1) * width + x];
+          neighbor2 = magnitude[(y + 1) * width + x];
+        } else {
+          // 对角线方向（左上-右下）
+          neighbor1 = magnitude[(y - 1) * width + (x - 1)];
+          neighbor2 = magnitude[(y + 1) * width + (x + 1)];
+        }
+        
+        // 如果当前像素是局部最大值，则保留
+        if (mag >= neighbor1 && mag >= neighbor2) {
+          suppressed[idx] = mag;
         }
       }
     }
     
-    // 3. 归一化
-    if (maxGradient > 0) {
-      for (let i = 0; i < edgeData.length; i++) {
-        edgeData[i] /= maxGradient;
+    return suppressed;
+  }
+
+  // 新增：双阈值处理和边缘连接
+  _doubleThresholdAndConnect(edges, width, height) {
+    const result = new Float32Array(width * height);
+    
+    // 计算更敏感的自适应阈值
+    const validEdges = edges.filter(e => e > 0);
+    if (validEdges.length === 0) return result;
+    
+    validEdges.sort((a, b) => a - b);
+    const median = validEdges[Math.floor(validEdges.length / 2)];
+    const p85 = validEdges[Math.floor(validEdges.length * 0.85)];
+    const p95 = validEdges[Math.floor(validEdges.length * 0.95)];
+    
+    // 使用更低的阈值以保留更多细节
+    const lowThreshold = median * 0.3;   // 降低低阈值
+    const highThreshold = p85 * 0.4;     // 降低高阈值，使用p85而不是p90
+    
+    // 标记强边缘和弱边缘
+    const strongEdges = new Uint8Array(width * height);
+    const weakEdges = new Uint8Array(width * height);
+    
+    for (let i = 0; i < edges.length; i++) {
+      if (edges[i] >= highThreshold) {
+        strongEdges[i] = 1;
+        result[i] = edges[i];
+      } else if (edges[i] >= lowThreshold) {
+        weakEdges[i] = 1;
       }
     }
     
-    this.edgeMap = {
-      data: edgeData,
-      width: width,
-      height: height,
-    };
+    // 更精确的边缘连接：使用4连通而不是8连通，减少过度连接
+    const visited = new Uint8Array(width * height);
+    const stack = [];
+    
+    // 从强边缘开始搜索
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = y * width + x;
+        if (strongEdges[idx] && !visited[idx]) {
+          stack.push({ x, y });
+          visited[idx] = 1;
+          
+          while (stack.length > 0) {
+            const { x: cx, y: cy } = stack.pop();
+            
+            // 使用4连通（上下左右），减少对角连接以保持边缘锐利
+            const neighbors = [
+              { dx: 0, dy: -1 }, // 上
+              { dx: 0, dy: 1 },  // 下
+              { dx: -1, dy: 0 }, // 左
+              { dx: 1, dy: 0 }   // 右
+            ];
+            
+            for (const { dx, dy } of neighbors) {
+              const nx = cx + dx;
+              const ny = cy + dy;
+              const nIdx = ny * width + nx;
+              
+              if (nx >= 0 && nx < width && ny >= 0 && ny < height && 
+                  !visited[nIdx] && weakEdges[nIdx]) {
+                visited[nIdx] = 1;
+                result[nIdx] = edges[nIdx];
+                stack.push({ x: nx, y: ny });
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    return result;
   }
 
   // 新增：自适应细分总控函数
@@ -1437,12 +1687,79 @@ export class BadgeOBJExporter {
     const uv2 = this.uvs[uv2_idx - 1];
     const uv3 = this.uvs[uv3_idx - 1];
     
-    // 使用三角形UV中心点的边缘强度作为判断依据
-    const centroid_u = (uv1.u + uv2.u + uv3.u) / 3;
-    const centroid_v = (uv1.v + uv2.v + uv3.v) / 3;
-    const edgeIntensity = this.getEdgeIntensity(centroid_u, centroid_v);
+    // 使用三角形边缘和中心的边缘强度进行综合判断
+    const intensity1 = this.getEdgeIntensity(uv1.u, uv1.v);
+    const intensity2 = this.getEdgeIntensity(uv2.u, uv2.v);
+    const intensity3 = this.getEdgeIntensity(uv3.u, uv3.v);
+    
+    // 检查三条边的中点强度（边缘连续性）
+    const edge12_u = (uv1.u + uv2.u) / 2;
+    const edge12_v = (uv1.v + uv2.v) / 2;
+    const edge23_u = (uv2.u + uv3.u) / 2;
+    const edge23_v = (uv2.v + uv3.v) / 2;
+    const edge31_u = (uv3.u + uv1.u) / 2;
+    const edge31_v = (uv3.v + uv1.v) / 2;
+    
+    const edgeIntensity1 = this.getEdgeIntensity(edge12_u, edge12_v);
+    const edgeIntensity2 = this.getEdgeIntensity(edge23_u, edge23_v);
+    const edgeIntensity3 = this.getEdgeIntensity(edge31_u, edge31_v);
+    
+    // 三角形中心强度
+    const centerIntensity = this.getEdgeIntensity(
+      (uv1.u + uv2.u + uv3.u) / 3,
+      (uv1.v + uv2.v + uv3.v) / 3
+    );
+    
+    const maxVertexIntensity = Math.max(intensity1, intensity2, intensity3);
+    const maxEdgeIntensity = Math.max(edgeIntensity1, edgeIntensity2, edgeIntensity3);
+    const maxIntensity = Math.max(maxVertexIntensity, maxEdgeIntensity, centerIntensity);
+    
+    // 计算平均强度，加权边缘强度
+    const avgIntensity = (intensity1 + intensity2 + intensity3 + 
+                         edgeIntensity1 * 1.5 + edgeIntensity2 * 1.5 + edgeIntensity3 * 1.5 + 
+                         centerIntensity) / 10;
+    
+    // 计算三角形在UV空间的面积
+    const uvArea = Math.abs((uv2.u - uv1.u) * (uv3.v - uv1.v) - (uv3.u - uv1.u) * (uv2.v - uv1.v)) / 2;
+    
+    // 基于新的边缘检测系统的自适应阈值
+    let adaptiveThreshold = this.subdivision.threshold;
+    
+    if (this.edgeMap && this.edgeMap.stats) {
+      // 根据面积调整阈值
+      if (uvArea > 0.002) {
+        adaptiveThreshold *= 0.6; // 大面积，更积极细分
+      } else if (uvArea > 0.001) {
+        adaptiveThreshold *= 0.8;
+      }
+      
+      // 根据边缘统计调整
+      if (maxEdgeIntensity > this.edgeMap.stats.p75) {
+        adaptiveThreshold *= 0.5; // 强边缘区域，大幅降低阈值
+      } else if (maxEdgeIntensity > this.edgeMap.stats.median) {
+        adaptiveThreshold *= 0.7;
+      }
+      
+      // 如果有连续的边缘（多个边缘点都有较高强度），更积极细分
+      const edgeCount = [edgeIntensity1, edgeIntensity2, edgeIntensity3]
+        .filter(intensity => intensity > this.edgeMap.stats.median).length;
+      if (edgeCount >= 2) {
+        adaptiveThreshold *= 0.6;
+      }
+    }
 
-    if (depth < this.subdivision.maxDepth && edgeIntensity > this.subdivision.threshold) {
+    // 综合判断条件：
+    // 1. 最大强度超过阈值
+    // 2. 平均强度较高且面积较大
+    // 3. 边缘连续性强（多条边都有较高强度）
+    const condition1 = maxIntensity > adaptiveThreshold;
+    const condition2 = avgIntensity > adaptiveThreshold * 0.5 && uvArea > 0.0008;
+    const condition3 = maxEdgeIntensity > adaptiveThreshold * 0.8 && 
+                      (edgeIntensity1 + edgeIntensity2 + edgeIntensity3) > adaptiveThreshold * 1.5;
+    
+    const shouldSubdivide = condition1 || condition2 || condition3;
+
+    if (depth < this.subdivision.maxDepth && shouldSubdivide) {
       const v1 = this.vertices[v1_idx - 1];
       const v2 = this.vertices[v2_idx - 1];
       const v3 = this.vertices[v3_idx - 1];
@@ -1503,6 +1820,15 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
       exportSettings.meshQuality.enableBoundaryConnection !== false, 
       exportSettings.meshQuality.maxBoundaryConnections || 3
     );
+    
+    // 2. 设置自适应细分参数
+    if (exportSettings.subdivision) {
+      exporter.setSubdivisionSettings(
+        exportSettings.subdivision.enabled !== false,
+        exportSettings.subdivision.threshold || 0.05,
+        exportSettings.subdivision.maxDepth || 5
+      );
+    }
     
     // 纹理画布的生成对于两种模式都是必须的
     // 3D打印模式用它来获取顶点颜色
