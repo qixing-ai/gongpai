@@ -1799,6 +1799,62 @@ export class BadgeOBJExporter {
       this.faces.push(face);
     }
   }
+
+  // 新增：获取EdgeMap的可视化Canvas
+  getEdgeMapCanvas() {
+    if (!this.edgeMap) {
+      console.warn("Edge map has not been generated yet.");
+      // 创建一个提示画布
+      const canvas = document.createElement('canvas');
+      canvas.width = 200;
+      canvas.height = 50;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#f0f0f0';
+      ctx.fillRect(0, 0, 200, 50);
+      ctx.fillStyle = 'red';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('EdgeMap尚未生成', 100, 30);
+      return canvas;
+    }
+
+    const { data, width, height } = this.edgeMap;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.createImageData(width, height);
+    
+    // 为了获得更好的视觉效果，使用百分位数进行归一化，并应用gamma校正
+    const validIntensities = Array.from(data).filter(v => v > 0).sort((a, b) => a - b);
+    let maxIntensityForNormalization = 1;
+    if (validIntensities.length > 0) {
+        // 使用99.5百分位作为最大值，这会使大多数边缘更亮，代价是裁剪掉最亮的0.5%
+        const percentileIndex = Math.min(validIntensities.length - 1, Math.floor(validIntensities.length * 0.995));
+        maxIntensityForNormalization = validIntensities[percentileIndex] || 1;
+    }
+
+    if (maxIntensityForNormalization === 0) maxIntensityForNormalization = 1;
+
+    for (let i = 0; i < data.length; i++) {
+      const normalized = Math.min(1.0, data[i] / maxIntensityForNormalization);
+      
+      // 应用Gamma校正来提亮非黑色区域 (gamma < 1.0)
+      const gamma = 0.45;
+      const correctedValue = Math.pow(normalized, gamma);
+      
+      const intensity = Math.round(correctedValue * 255);
+      
+      const idx = i * 4;
+      imageData.data[idx] = intensity;     // R
+      imageData.data[idx + 1] = intensity; // G
+      imageData.data[idx + 2] = intensity; // B
+      imageData.data[idx + 3] = 255;       // A
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+    return canvas;
+  }
 }
 
 // 导出函数
@@ -1846,6 +1902,9 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
     
     await new Promise(resolve => setTimeout(resolve, 0)); // 确保UI更新
 
+    // 在这里获取Edge Map Canvas
+    const edgeMapCanvas = exporter.getEdgeMapCanvas();
+
     const downloadFile = (content, filename, type = 'text/plain') => {
       const blob = new Blob([content], { type });
       const url = URL.createObjectURL(blob);
@@ -1874,7 +1933,7 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
       }
     }
 
-    return { success: true, message: '模型已成功导出！' };
+    return { success: true, message: '模型已成功导出！', edgeMapCanvas };
   } catch (error) {
     console.error("导出OBJ时发生严重错误: ", error);
     return { success: false, message: '导出失败: ' + error.message };

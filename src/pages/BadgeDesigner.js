@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   Layout,
   Button,
@@ -121,8 +121,13 @@ const BadgeDesigner = () => {
   );
 
   const [loading, setLoading] = useState(false);
+  const [edgeMapUrl, setEdgeMapUrl] = useState(null);
 
-    // 导出工牌为OBJ模型
+  const settingsColSpan = edgeMapUrl ? 5 : 6;
+  const previewColSpan = edgeMapUrl ? 7 : 12;
+  const edgeMapColSpan = 7;
+
+  // 导出工牌为OBJ模型
   const exportBadge = (for3DPrinting = false) => {
     // 防止重复点击
     if (loading) {
@@ -154,6 +159,18 @@ const BadgeDesigner = () => {
         
         if (result.success) {
           message.success(result.message, 5);
+          // 新增：处理并显示Edge Map
+          if (result.edgeMapCanvas) {
+            const canvas = result.edgeMapCanvas;
+            // 设置canvas样式以便在页面上更好地显示
+            canvas.style.width = '100%';
+            canvas.style.height = 'auto';
+            canvas.style.marginTop = '16px';
+            canvas.style.border = '1px solid #d9d9d9';
+            canvas.style.borderRadius = '4px';
+
+            setEdgeMapUrl(canvas.toDataURL());
+          }
         } else {
           message.error(result.message);
         }
@@ -224,7 +241,7 @@ const BadgeDesigner = () => {
       <Content style={{ padding: 12, background: '#f5f5f5', overflow: 'hidden' }}>
         <Spin spinning={loading} tip="加载中...">
           <Row gutter={12} style={{ height: '100%' }}>
-            <Col span={6}>
+            <Col span={settingsColSpan}>
               <BadgeSettings
                 badgeSettings={badgeSettings}
                 setBadgeSettings={setBadgeSettings}
@@ -237,7 +254,7 @@ const BadgeDesigner = () => {
                 formatSize={formatSize}
               />
             </Col>
-            <Col span={12}>
+            <Col span={previewColSpan}>
               <BadgePreview
                 badgeSettings={badgeSettings}
                 holeSettings={holeSettings}
@@ -252,23 +269,46 @@ const BadgeDesigner = () => {
                 formatSize={formatSize}
               />
             </Col>
-            <Col span={6}>
-              <div style={{
-                height: '90vh',
-                overflow: 'auto',
-                marginBottom: '8px'
-              }}>
-                <TextSettings
-                  texts={texts}
-                  setTexts={setTexts}
-                  badgeSettings={badgeSettings}
-                  exportSettings={exportSettings}
-                  setExportSettings={setExportSettings}
-                  selectedElement={selectedElement}
-                  setSelectedElement={setSelectedElement}
-                  UNIT_CONFIG={UNIT_CONFIG}
-                  formatSize={formatSize}
-                />
+            
+            {edgeMapUrl && (
+              <Col span={edgeMapColSpan} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div style={{ flex: '0 0 auto', textAlign: 'center', padding: '12px 0 8px 0' }}>
+                    <Title level={5} style={{ margin: 0 }}>边缘强度图</Title>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>白色区域将被优先细分</Typography.Text>
+                </div>
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px' }}>
+                    <img
+                        src={edgeMapUrl}
+                        alt="Edge Map Visualization"
+                        style={{
+                            maxWidth: '100%',
+                            maxHeight: '100%',
+                            objectFit: 'contain',
+                            border: '1px solid #f0f0f0',
+                            borderRadius: 4,
+                            backgroundColor: '#000',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                        }}
+                    />
+                </div>
+              </Col>
+            )}
+
+            <Col span={settingsColSpan}>
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight: 8 }}>
+                  <TextSettings
+                    texts={texts}
+                    setTexts={setTexts}
+                    badgeSettings={badgeSettings}
+                    exportSettings={exportSettings}
+                    setExportSettings={setExportSettings}
+                    selectedElement={selectedElement}
+                    setSelectedElement={setSelectedElement}
+                    UNIT_CONFIG={UNIT_CONFIG}
+                    formatSize={formatSize}
+                  />
+                </div>
               </div>
             </Col>
           </Row>
