@@ -1504,9 +1504,10 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
       exportSettings.meshQuality.maxBoundaryConnections || 3
     );
     
-    if (options.for3DPrinting) {
-      exporter.textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, texts, exportSettings);
-    }
+    // 纹理画布的生成对于两种模式都是必须的
+    // 3D打印模式用它来获取顶点颜色
+    // 普通模式用它来生成贴图文件
+    exporter.textureCanvas = await exporter.generateTextureCanvas(badgeSettings, holeSettings, imageSettings, texts, exportSettings);
     
     // 2. 生成几何体 - 修正错误的函数调用
     const { objContent, mtlContent, textureBlob } = await exporter.generateBadgeOBJ(
@@ -1537,8 +1538,9 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
     // 如果不是3D打印模式，则生成并下载MTL和纹理
     if (!options.for3DPrinting) {
       // 生成并下载MTL文件
-      const mtlContent = mtlContent || exporter.generateMTLContent();
-      downloadFile(mtlContent, 'badge.mtl');
+      if (mtlContent) {
+        downloadFile(mtlContent, 'badge.mtl');
+      }
 
       // 生成并下载纹理图片
       if (textureBlob) {
