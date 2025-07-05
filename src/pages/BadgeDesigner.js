@@ -144,7 +144,7 @@ const BadgeDesigner = () => {
           : '正在生成OBJ模型...';
         message.loading(loadingMessage, 0);
         
-        const { exportBadgeAsOBJ } = await import('../utils/objExporter');
+        const { exportBadgeAsOBJ } = await import('../utils/obj-exporter');
         
         const result = await exportBadgeAsOBJ(
           badgeSettings, 
