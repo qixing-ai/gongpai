@@ -45,9 +45,6 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
     
     await new Promise(resolve => setTimeout(resolve, 0)); // 确保UI更新
 
-    // 在这里获取Edge Map Canvas
-    const edgeMapCanvas = exporter.adaptiveSubdivision.getEdgeMapCanvas();
-
     const downloadFile = (content, filename, type = 'text/plain') => {
       const blob = new Blob([content], { type });
       const url = URL.createObjectURL(blob);
@@ -76,7 +73,7 @@ export async function exportBadgeAsOBJ(badgeSettings, holeSettings, imageSetting
       }
     }
 
-    return { success: true, message: '模型已成功导出！', edgeMapCanvas };
+    return { success: true, message: '模型已成功导出！' };
   } catch (error) {
     console.error("导出OBJ时发生严重错误: ", error);
     return { success: false, message: '导出失败: ' + error.message };
