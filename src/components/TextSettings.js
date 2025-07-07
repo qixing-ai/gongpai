@@ -265,32 +265,8 @@ const TextSettings = ({
           
           <Row align="middle" gutter={8}>
             <Col span={6}><Text>网格密度</Text></Col>
-            <Col span={12}>
-              <Slider
-                min={20}
-                max={1500}
-                step={10}
-                value={exportSettings.meshDensity?.density || 500}
-                onChange={(value) => setExportSettings(prev => ({
-                  ...prev,
-                  meshDensity: { density: value }
-                }))}
-                size="small"
-              />
-            </Col>
-            <Col span={6}>
-              <InputNumber
-                  min={20}
-                  max={1500}
-                  step={10}
-                  value={exportSettings.meshDensity?.density || 500}
-                  onChange={(value) => setExportSettings(prev => ({
-                    ...prev,
-                    meshDensity: { density: value || 20 }
-                  }))}
-                  size="small"
-                  style={{ width: '100%' }}
-                />
+            <Col span={18}>
+              <Text strong>50（固定）</Text>
             </Col>
           </Row>
           <Text style={{ fontSize: '11px', color: '#666' }}>
@@ -316,22 +292,7 @@ const TextSettings = ({
             更高的分辨率会带来更清晰的纹理，但会增加文件大小。
           </Text>
           
-          {/* 自适应细分设置 */}
-          <div>
-            <Text>自适应细分</Text>
-            <div style={{ marginTop: 4 }}>
-              <Checkbox
-                checked={exportSettings.subdivision?.enabled !== false}
-                onChange={(e) => setExportSettings(prev => ({
-                  ...prev,
-                  subdivision: { ...prev.subdivision, enabled: e.target.checked }
-                }))}
-                size="small"
-              >
-                启用自适应细分
-              </Checkbox>
-            </div>
-          </div>
+         
           
           {exportSettings.subdivision?.enabled !== false && (
             <>

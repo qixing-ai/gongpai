@@ -86,7 +86,7 @@ const BadgeDesigner = () => {
       thickness: 2.0,       // 厚度 mm
       textureResolution: 8192, // 贴图分辨率
       meshDensity: {        // 网格密度设置
-        density: 500         // 正方形网格分段数
+        density: 50         // 固定为50
       },
       meshQuality: {        // 网格质量设置
         enableBoundaryConnection: true,  // 是否启用边界连接
@@ -95,8 +95,8 @@ const BadgeDesigner = () => {
       },
       subdivision: {        // 自适应细分设置
         enabled: true,      // 是否启用自适应细分
-        threshold: 0.05,    // 边缘强度阈值
-        maxDepth: 5         // 最大细分深度
+        threshold: 0.01,    // 边缘强度阈值（默认为0.01）
+        maxDepth: 4         // 最大细分深度（默认为4）
       }
     }
   });
@@ -127,34 +127,30 @@ const BadgeDesigner = () => {
 
   // 导出工牌为OBJ模型
   const exportBadge = (for3DPrinting = false) => {
-    // 防止重复点击
     if (loading) {
       return;
     }
-    
     setLoading(true);
-    
-    // 使用 setTimeout 确保 UI 有时间更新加载状态
+    setExportSettings(prev => ({
+      ...prev,
+      meshDensity: { density: 50 }
+    }));
     setTimeout(async () => {
       try {
         const loadingMessage = for3DPrinting 
           ? '正在生成用于3D打印的OBJ模型...' 
           : '正在生成OBJ模型...';
         message.loading(loadingMessage, 0);
-        
         const { exportBadgeAsOBJ } = await import('../utils/obj-exporter');
-        
         const result = await exportBadgeAsOBJ(
           badgeSettings, 
           holeSettings, 
           imageSettings, 
           texts,
-          exportSettings,
+          { ...exportSettings, meshDensity: { density: 50 } },
           { for3DPrinting }
         );
-        
         message.destroy(); // 清除loading消息
-        
         if (result.success) {
           message.success(result.message, 5);
         } else {
@@ -165,10 +161,9 @@ const BadgeDesigner = () => {
         message.error('导出失败：' + error.message);
         console.error('导出错误:', error);
       } finally {
-        // 确保加载状态被正确重置
         setLoading(false);
       }
-    }, 100); // 增加延迟时间，确保UI更新
+    }, 100);
   };
 
   // 重置设计
@@ -179,6 +174,11 @@ const BadgeDesigner = () => {
     removeTexts();
     removeExportSettings();
     setSelectedElement(null);
+    // 重置后强制meshDensity为50
+    setExportSettings(prev => ({
+      ...prev,
+      meshDensity: { density: 50 }
+    }));
     message.success('设计已重置');
   };
 
