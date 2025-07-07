@@ -87,7 +87,8 @@ const BadgePreview = ({
             backgroundColor: badgeSettings.backgroundColor,
             borderRadius: badgeSettings.borderRadius * UNIT_CONFIG.PREVIEW_SCALE,
             position: 'relative',
-            border: selectedElement?.type === 'badge' ? '2px solid #1890ff' : '1px solid #d9d9d9',
+            border: '2px solid transparent',
+            outline: selectedElement?.type === 'badge' ? '2px solid #1890ff' : 'none',
             margin: '10px auto',
             overflow: 'visible',
             boxShadow: selectedElement?.type === 'badge' ? '0 0 8px rgba(24, 144, 255, 0.3)' : '0 4px 12px rgba(0,0,0,0.1)',
@@ -116,6 +117,7 @@ const BadgePreview = ({
                             holeSettings.shape === 'rectangle' ? holeSettings.borderRadius * UNIT_CONFIG.PREVIEW_SCALE + 'px' : '2px',
                 cursor: 'pointer',
                 boxShadow: selectedElement?.type === 'hole' ? '0 0 8px rgba(82, 196, 26, 0.3)' : 'none',
+                zIndex: selectedElement?.type === 'hole' ? 2 : 1,
               }}
               onClick={(e) => {
                 e.stopPropagation();
@@ -159,6 +161,7 @@ const BadgePreview = ({
                        (interactionState.element?.type === 'image' && interactionState.type === 'drag' ? '2px dashed #1890ff' : '2px solid transparent'),
                 borderRadius: '4px',
                 boxShadow: selectedElement?.type === 'image' ? '0 0 8px rgba(24, 144, 255, 0.3)' : 'none',
+                zIndex: selectedElement?.type === 'image' ? 2 : 1,
               }}
               onMouseDown={(e) => {
                   e.stopPropagation();
