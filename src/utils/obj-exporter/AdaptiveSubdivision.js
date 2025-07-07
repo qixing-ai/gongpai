@@ -130,7 +130,7 @@ export class AdaptiveSubdivision {
     };
   }
 
-  // 新增：像素级反查法，预处理所有需要强制细分的三角面
+  // 新版：全像素覆盖+提前终止
   markForceSubdivideFaces() {
     if (!this.edgeMap) return new Set();
     const threshold = this.exporter.subdivision.threshold * 0.1; // 极低阈值
@@ -139,19 +139,36 @@ export class AdaptiveSubdivision {
     const faces = this.exporter.faces;
     const uvs = this.exporter.uvs;
     const forceSet = new Set();
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const idx = y * w + x;
-        if (this.edgeMap.data[idx] > threshold) {
+
+    for (let i = 0; i < faces.length; i++) {
+      const face = faces[i];
+      const uv1 = uvs[face.uvs[0] - 1];
+      const uv2 = uvs[face.uvs[1] - 1];
+      const uv3 = uvs[face.uvs[2] - 1];
+
+      // 计算三角形在UV空间的包围盒
+      const minU = Math.min(uv1.u, uv2.u, uv3.u);
+      const maxU = Math.max(uv1.u, uv2.u, uv3.u);
+      const minV = Math.min(uv1.v, uv2.v, uv3.v);
+      const maxV = Math.max(uv1.v, uv2.v, uv3.v);
+
+      // 转为像素坐标
+      const minX = Math.max(0, Math.floor(minU * w));
+      const maxX = Math.min(w - 1, Math.ceil(maxU * w));
+      const minY = Math.max(0, Math.floor((1 - maxV) * h));
+      const maxY = Math.min(h - 1, Math.ceil((1 - minV) * h));
+
+      let hasEdge = false;
+      // 遍历包围盒内像素
+      for (let y = minY; y <= maxY && !hasEdge; y++) {
+        for (let x = minX; x <= maxX && !hasEdge; x++) {
           const u = x / w;
           const v = 1 - (y / h);
-          for (let i = 0; i < faces.length; i++) {
-            const face = faces[i];
-            const uv1 = uvs[face.uvs[0] - 1];
-            const uv2 = uvs[face.uvs[1] - 1];
-            const uv3 = uvs[face.uvs[2] - 1];
-            if (uvInTriangle(u, v, uv1, uv2, uv3)) {
+          if (uvInTriangle(u, v, uv1, uv2, uv3)) {
+            const idx = y * w + x;
+            if (this.edgeMap.data[idx] > threshold) {
               forceSet.add(i);
+              hasEdge = true; // 提前终止
             }
           }
         }
